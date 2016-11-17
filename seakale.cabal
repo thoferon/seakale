@@ -1,0 +1,40 @@
+name:                  seakale
+version:               0.9.0
+synopsis:              Pure SQL layer on top of other libraries
+license:               BSD3
+license-file:          LICENSE
+author:                Thomas Feron
+maintainer:            thomas.feron@redspline.com
+category:              Database
+build-type:            Simple
+extra-source-files:    ChangeLog.md
+cabal-version:         >=1.10
+
+library
+  ghc-options:         -Wall
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+
+  default-extensions:  TypeFamilies
+                       LambdaCase
+                       DeriveFunctor
+                       RankNTypes
+                       FlexibleInstances
+                       MultiParamTypeClasses
+                       FunctionalDependencies
+                       FlexibleContexts
+                       TupleSections
+                       DataKinds
+                       GADTs
+                       ConstraintKinds
+
+  exposed-modules:     Database.Seakale.FromRow
+                       Database.Seakale.Request
+                       Database.Seakale.Request.Internal
+                       Database.Seakale.ToRow
+                       Database.Seakale.Types
+
+  build-depends:       base >=4.8 && <4.9
+                     , free
+                     , mtl
+                     , bytestring
