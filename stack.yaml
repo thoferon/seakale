@@ -2,6 +2,8 @@ resolver: lts-6.25
 packages:
 - '.'
 - 'seakale-postgresql'
-extra-deps: []
+- 'seakale-tests'
+extra-deps:
+- recursion-schemes-5
 flags: {}
 extra-package-dbs: []
