@@ -1,10 +1,19 @@
 module Database.Seakale.PostgreSQL.Types
-  ( SeakaleError(..)
+  ( PSQL(..)
+  , SeakaleError(..)
   , T.Query(..)
   , T.Only(..)
   , RequestT
   , Request
+  , T.Field(..)
+  , T.Row
+  , T.ColumnInfo(..)
+  , T.QueryData
+  , T.Vector(..)
+  , T.cons, (<:>)
+  , T.nil, (<:|)
   , runRequestT
+  , runRequest
   ) where
 
 import           Control.Monad.Except
@@ -21,11 +30,11 @@ import           Database.PostgreSQL.LibPQ hiding (status, Row)
 
 import           Database.Seakale.Types
                    ( SeakaleError(..), Backend(MonadBackend), ColumnInfo(..)
-                   , Row, Field(..) )
+                   , Row, Field(..), (<:>), (<:|) )
 import qualified Database.Seakale.Types as T
 import qualified Database.Seakale.Request.Internal as I
 
-data PSQL
+data PSQL = PSQL
 
 type RequestT = I.RequestT PSQL
 type Request  = I.Request  PSQL
@@ -60,7 +69,8 @@ instance Backend PSQL where
 
 runRequestT :: (HasConnection m, MonadIO m) => RequestT m a
             -> m (Either SeakaleError a)
-runRequestT = fmap fst . flip runStateT [] . I.runRequestT . hoistFreeT lift
+runRequestT =
+  fmap fst . flip runStateT [] . I.runRequestT PSQL . hoistFreeT lift
 
 runRequest :: (HasConnection m, MonadIO m) => Request a
            -> m (Either SeakaleError a)

@@ -5,8 +5,6 @@ import           GHC.Exts
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 
-data Proxy a = Proxy
-
 data SeakaleError
   = RowParseError String
   | BackendError BS.ByteString
@@ -33,6 +31,16 @@ data Query :: Nat -> * where
   Hole       :: Query n -> Query ('S n)
   EmptyQuery :: Query Zero
 
+formatQuery :: Query n -> QueryData n -> BSL.ByteString
+formatQuery r d = BSL.fromChunks $ go r d
+  where
+    go :: Query n -> QueryData n -> [BS.ByteString]
+    go req dat = case (req, dat) of
+      (Plain bs req', _) -> bs : go req' dat
+      (Hole req', Cons bs dat') -> bs : go req' dat'
+      (EmptyQuery, Nil) -> []
+      _ -> error "formatQuery: the impossible happened"
+
 instance IsString (Query n) where
   fromString = undefined
 
@@ -46,9 +54,9 @@ class Backend backend where
   type ColumnType backend :: *
   type MonadBackend backend (m :: * -> *) :: Constraint
 
-  runQuery :: MonadBackend backend m => Proxy backend -> BSL.ByteString
+  runQuery :: MonadBackend backend m => backend -> BSL.ByteString
            -> m (Either BS.ByteString ([ColumnInfo backend], [Row backend]))
-  runExecute :: MonadBackend backend m => Proxy backend -> BSL.ByteString
+  runExecute :: MonadBackend backend m => backend -> BSL.ByteString
              -> m (Either BS.ByteString Integer)
 
 data ColumnInfo backend = ColumnInfo

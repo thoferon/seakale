@@ -17,8 +17,12 @@ library
 
   default-extensions:  TypeFamilies
                        OverloadedStrings
+                       FlexibleInstances
+                       MultiParamTypeClasses
+                       FunctionalDependencies
 
-  exposed-modules:     Database.Seakale.PostgreSQL.Base
+  exposed-modules:     Database.Seakale.PostgreSQL.FromRow
+                       Database.Seakale.PostgreSQL.ToRow
                        Database.Seakale.PostgreSQL.Types
 
   build-depends:       base >=4.8 && <4.9
