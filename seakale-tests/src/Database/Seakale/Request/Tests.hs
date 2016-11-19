@@ -19,9 +19,9 @@ import           Database.Seakale.Types hiding (runQuery, runExecute)
 
 import           Database.Seakale.Request.Tests.Mock
 
-phi :: (forall b. MockF backend b -> Maybe (a, Mock backend))
-    -> MockF backend (Mock backend, Maybe (a, Mock backend))
-    -> Maybe (a, Mock backend)
+phi :: (forall b. MockF backend b -> Maybe (a, Mock backend c))
+    -> MockF backend (Mock backend c, Maybe (a, Mock backend c))
+    -> Maybe (a, Mock backend c)
 phi f = \case
     mock@(FMockQuery   _ _) -> f mock
     mock@(FMockExecute _ _) -> f mock
@@ -35,28 +35,29 @@ phi f = \case
       fmap (\(x, m1') -> (x, noNone After m1' m2)) mRes1
     FNone -> Nothing
   where
-    noNone :: (Mock backend -> Mock backend -> Mock backend)
-           -> Mock backend -> Mock backend -> Mock backend
-    noNone _ None m = m
+    noNone :: (Mock backend a -> Mock backend a -> Mock backend a)
+           -> Mock backend a -> Mock backend a -> Mock backend a
+    noNone _ (None _) m = m
     noNone g m1 m2 = g m1 m2
 
-runQuery :: BSL.ByteString -> Mock backend
-         -> Maybe (([ColumnInfo backend], [Row backend]), Mock backend)
+runQuery :: BSL.ByteString -> Mock backend a
+         -> Maybe (([ColumnInfo backend], [Row backend]), Mock backend a)
 runQuery req = para (phi f)
   where
     f :: MockF backend a
-      -> Maybe (([ColumnInfo backend], [Row backend]), Mock backend)
-    f (FMockQuery r cr) | r == req = Just (cr, None)
+      -> Maybe (([ColumnInfo backend], [Row backend]), Mock backend b)
+    f (FMockQuery p cr) | p req = Just (cr, None Nothing)
     f _ = Nothing
 
-runExecute :: BSL.ByteString -> Mock backend -> Maybe (Integer, Mock backend)
+runExecute :: BSL.ByteString -> Mock backend a
+           -> Maybe (Integer, Mock backend a)
 runExecute req = para (phi f)
   where
-    f :: MockF backend a -> Maybe (Integer, Mock backend)
-    f (FMockExecute r i) | r == req = Just (i, None)
+    f :: MockF backend a -> Maybe (Integer, Mock backend b)
+    f (FMockExecute p i) | p req = Just (i, None Nothing)
     f _ = Nothing
 
-runRequestT :: Monad m => backend -> Mock backend
+runRequestT :: Monad m => backend -> Mock backend b
             -> RequestT backend m a -> m (Either SeakaleError a)
 runRequestT b m =
     fmap fst . flip runStateT m . E.runExceptT . iterT (interpreter b)
@@ -64,8 +65,8 @@ runRequestT b m =
   where
     interpreter :: Monad m => backend
                 -> RequestF backend (E.ExceptT SeakaleError
-                                               (StateT (Mock backend) m) a)
-                -> E.ExceptT SeakaleError (StateT (Mock backend) m) a
+                                               (StateT (Mock backend b) m) a)
+                -> E.ExceptT SeakaleError (StateT (Mock backend b) m) a
     interpreter backend = \case
       Query req f -> do
         mock <- get
@@ -82,6 +83,6 @@ runRequestT b m =
       ThrowError err -> E.throwError err
       GetBackend f -> f backend
 
-runRequest :: backend -> Mock backend -> Request backend a
+runRequest :: backend -> Mock backend b -> Request backend a
            -> Either SeakaleError a
 runRequest backend mock = runIdentity . runRequestT backend mock
