@@ -102,3 +102,12 @@ andThen = After
 anyOf, allOf :: [Mock backend a] -> Mock backend a
 anyOf = foldr mor  (None Nothing)
 allOf = foldr mand (None Nothing)
+
+fixAfter :: Mock backend a -> Mock backend a
+fixAfter mock = After mock (fixAfter mock)
+
+times :: Int -> Mock backend a -> Mock backend a
+times n mock
+  | n <= 0 = None Nothing
+  | n == 1 = mock
+  | otherwise = After mock $ times (n - 1) mock

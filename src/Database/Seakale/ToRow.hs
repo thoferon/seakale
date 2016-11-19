@@ -1,3 +1,5 @@
+{-# LANGUAGE UndecidableInstances #-}
+
 module Database.Seakale.ToRow where
 
 import qualified Data.ByteString as BS
@@ -85,3 +87,7 @@ instance ( ToField backend a, ToField backend b, ToField backend c
 
 instance ToField backend a => ToRow backend n (Vector n a) where
   toRow backend xs = fmap (toField backend) xs
+
+instance (ToRow backend k a, ToRow backend l b, (k :+: l) ~ i)
+  => ToRow backend i (a :. b) where
+  toRow backend (x :. y) = vconcat (toRow backend x) (toRow backend y)

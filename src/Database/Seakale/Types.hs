@@ -1,7 +1,10 @@
+{-# LANGUAGE UndecidableInstances #-}
+
 module Database.Seakale.Types where
 
 import           GHC.Exts
 
+import           Data.Monoid
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 
@@ -23,6 +26,10 @@ type Eight = 'S Seven
 type Nine  = 'S Eight
 type Ten   = 'S Nine
 
+type family (:+:) (n :: Nat) (m :: Nat) :: Nat
+type instance 'O :+: n = n
+type instance 'S n :+: m = 'S (n :+: m)
+
 class NatEq n m
 instance NatEq n n
 
@@ -30,6 +37,9 @@ data Query :: Nat -> * where
   Plain      :: BS.ByteString -> Query n -> Query n
   Hole       :: Query n -> Query ('S n)
   EmptyQuery :: Query Zero
+
+data RepeatQuery :: Nat -> Nat -> Nat -> * where
+  RepeatQuery :: Query k -> Query l -> Query i -> RepeatQuery k l i
 
 formatQuery :: Query n -> QueryData n -> BSL.ByteString
 formatQuery r d = BSL.fromChunks $ go r d
@@ -41,8 +51,12 @@ formatQuery r d = BSL.fromChunks $ go r d
       (EmptyQuery, Nil) -> []
       _ -> error "formatQuery: the impossible happened"
 
-instance IsString (Query n) where
-  fromString = undefined
+formatMany :: RepeatQuery k l i -> QueryData k -> QueryData i -> [QueryData l]
+           -> BSL.ByteString
+formatMany (RepeatQuery before between after) beforeData afterData dat =
+  formatQuery before beforeData
+  <> mconcat (map (formatQuery between) dat)
+  <> formatQuery after afterData
 
 data Field backend = Field
   { fieldValue :: Maybe BS.ByteString
@@ -89,4 +103,10 @@ nil = Nil
 
 infixr 5 <:|
 
+vconcat :: Vector n a -> Vector m a -> Vector (n :+: m) a
+vconcat Nil xs = xs
+vconcat (Cons x xs) ys = Cons x (vconcat xs ys)
+
 newtype Only a = Only a
+
+data (:.) a b = (:.) a b

@@ -125,6 +125,10 @@ instance FromField backend a => FromRow backend [a] where
     n <- numFieldsRemaining
     replicateM n field
 
+instance (FromRow backend a, FromRow backend b)
+  => FromRow backend (a :. b) where
+  fromRow = (:.) <$> fromRow <*> fromRow
+
 instance FromField backend () where
   fromField _ _ _ = return ()
 
