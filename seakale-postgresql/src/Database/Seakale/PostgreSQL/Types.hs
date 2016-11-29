@@ -2,7 +2,6 @@ module Database.Seakale.PostgreSQL.Types
   ( PSQL(..)
   , SeakaleError(..)
   , T.Query(..)
-  , T.Only(..)
   , RequestT
   , Request
   , T.Field(..)
@@ -14,6 +13,17 @@ module Database.Seakale.PostgreSQL.Types
   , T.nil, (<:|)
   , runRequestT
   , runRequest
+  , T.Zero
+  , T.One
+  , T.Two
+  , T.Three
+  , T.Four
+  , T.Five
+  , T.Six
+  , T.Seven
+  , T.Eight
+  , T.Nine
+  , T.Ten
   ) where
 
 import           Control.Monad.Except

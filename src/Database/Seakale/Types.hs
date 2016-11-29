@@ -26,12 +26,9 @@ type Eight = 'S Seven
 type Nine  = 'S Eight
 type Ten   = 'S Nine
 
-type family (:+:) (n :: Nat) (m :: Nat) :: Nat
-type instance 'O :+: n = n
-type instance 'S n :+: m = 'S (n :+: m)
-
-class NatEq n m
-instance NatEq n n
+type family (:+) (n :: Nat) (m :: Nat) :: Nat
+type instance 'O :+ n = n
+type instance 'S n :+ m = 'S (n :+ m)
 
 data Query :: Nat -> * where
   Plain      :: BS.ByteString -> Query n -> Query n
@@ -103,10 +100,15 @@ nil = Nil
 
 infixr 5 <:|
 
-vconcat :: Vector n a -> Vector m a -> Vector (n :+: m) a
+vconcat :: Vector n a -> Vector m a -> Vector (n :+ m) a
 vconcat Nil xs = xs
 vconcat (Cons x xs) ys = Cons x (vconcat xs ys)
 
-newtype Only a = Only a
+class NTimes f where
+  ntimes :: a -> f a
 
-data (:.) a b = (:.) a b
+instance NTimes (Vector Zero) where
+  ntimes _ = Nil
+
+instance NTimes (Vector n) => NTimes (Vector ('S n)) where
+  ntimes x = Cons x (ntimes x)

@@ -21,14 +21,14 @@ import           Database.Seakale.ToRow
 import           Database.Seakale.Types
 import qualified Database.Seakale.Request.Internal as I
 
-query :: (MonadRequest b m, ToRow b n r, FromRow b s) => Query n -> r
+query :: (MonadRequest b m, ToRow b n r, FromRow b n' s) => Query n -> r
       -> m [s]
 query = queryWith fromRow
 
-query_ :: (MonadRequest b m, FromRow b r) => Query Zero -> m [r]
+query_ :: (MonadRequest b m, FromRow b n r) => Query Zero -> m [r]
 query_ req = query req ()
 
-queryWith :: (MonadRequest b m, ToRow b n r) => RowParser b s -> Query n -> r
+queryWith :: (MonadRequest b m, ToRow b n r) => RowParser b n' s -> Query n -> r
           -> m [s]
 queryWith parser req dat = do
   backend <- getBackend
@@ -57,13 +57,13 @@ executeMany_ :: (MonadRequest b m, ToRow b n r)
 executeMany_ req dat = executeMany req () () dat
 
 returning :: ( MonadRequest b m, ToRow b n1 r1, ToRow b n2 r2, ToRow b n3 r3
-             , FromRow b s )
+             , FromRow b n s )
           => RepeatQuery n1 n2 n3 -> r1 -> r3 -> [r2] -> m [s]
 returning = returningWith fromRow
 
 returningWith :: ( MonadRequest b m, ToRow b n1 r1, ToRow b n2 r2, ToRow b n3 r3
-                 , FromRow b s )
-              => RowParser b s -> RepeatQuery n1 n2 n3 -> r1 -> r3 -> [r2]
+                 , FromRow b n s )
+              => RowParser b n s -> RepeatQuery n1 n2 n3 -> r1 -> r3 -> [r2]
               -> m [s]
 returningWith parser req bdat adat dat = do
   backend <- getBackend
@@ -73,10 +73,10 @@ returningWith parser req bdat adat dat = do
     Left err -> throwError $ RowParseError err
     Right xs -> return xs
 
-returning_ :: (MonadRequest b m, ToRow b n r, FromRow b s)
+returning_ :: (MonadRequest b m, ToRow b n r, FromRow b n' s)
            => RepeatQuery Zero n Zero -> [r] -> m [s]
 returning_ req dat = returningWith fromRow req () () dat
 
-returningWith_ :: (MonadRequest b m, ToRow b n r, FromRow b s)
-               => RowParser b s -> RepeatQuery Zero n Zero -> [r] -> m [s]
+returningWith_ :: (MonadRequest b m, ToRow b n r, FromRow b n' s)
+               => RowParser b n' s -> RepeatQuery Zero n Zero -> [r] -> m [s]
 returningWith_ parser req dat = returningWith parser req () () dat

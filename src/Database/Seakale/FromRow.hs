@@ -1,137 +1,243 @@
-module Database.Seakale.FromRow where
+{-# LANGUAGE UndecidableInstances #-}
 
-import Control.Applicative
-import Control.Monad
+module Database.Seakale.FromRow
+  ( RowParser
+  , pmap, ppure, preturn, papply, pbind, pfail
+  , pbackend, pconsume
+  , FromRow(..)
+  , parseRows
+  , parseRow
+  ) where
 
-import Database.Seakale.Types
+import           GHC.Generics
+import           GHC.Int
 
-class FromRow backend a where
-  fromRow :: RowParser backend a
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy  as BSL
+import qualified Data.Text             as T
+import qualified Data.Text.Encoding    as TE
+import qualified Data.Text.Lazy        as TL
 
-class FromField backend a where
-  fromField :: FieldParser backend a
+import           Database.Seakale.Types
 
-data RowParser backend a
-  = RowParser (backend -> [ColumnInfo backend] -> Row backend
-                       -> Either String ([ColumnInfo backend], Row backend, a))
-  deriving Functor
+-- Previous attempts to define it the "normal" way (and making it a Monad, ...)
+-- failed because GHC doesn't know that the type-level sum is associative
+-- resulting in errors such as:
+--
+-- Could not deduce ((k :+ (l :+ m)) ~ (i :+ m))
+-- from the context (GFromRow backend k a,
+--                   GFromRow backend l b,
+--                   (k :+ l) ~ i)
+data RowParser backend :: Nat -> * -> * where
+  GetBackend :: RowParser backend Zero backend
+  Consume    :: RowParser backend One (ColumnInfo backend, Field backend)
+  Pure       :: a -> RowParser backend Zero a
+  Bind       :: RowParser backend n a -> (a -> RowParser backend m b)
+             -> RowParser backend (n :+ m) b
+  Fail       :: String -> RowParser backend n a
 
-instance Applicative (RowParser backend) where
-  pure x = RowParser $ \_ cols rows -> Right (cols, rows, x)
-  RowParser f <*> RowParser g = RowParser $ \backend cols rows -> do
-    (cols',  rows',  h) <- f backend cols rows
-    (cols'', rows'', x) <- g backend cols' rows'
-    return (cols'', rows'', h x)
+pmap :: (a -> b) -> RowParser backend n a -> RowParser backend n b
+pmap f = \case
+  GetBackend    -> Bind GetBackend $ \x -> Pure $ f x
+  Consume       -> Bind Consume $ \x -> Pure $ f x
+  Pure x        -> Pure $ f x
+  Bind parser g -> Bind parser $ \x -> pmap f $ g x
+  Fail msg      -> Fail msg
 
-instance Monad (RowParser backend) where
-  RowParser f >>= g = RowParser $ \backend cols rows -> do
-    (cols', rows', x) <- f backend cols rows
-    let RowParser h = g x
-    h backend cols' rows'
+instance Functor (RowParser backend n) where
+  fmap = pmap
 
-instance Alternative (RowParser backend) where
-  empty = RowParser $ \_ _ _ -> Left "empty"
-  RowParser f <|> RowParser g = RowParser $ \backend cols rows ->
-    case f backend cols rows of
-      Left _ -> g backend cols rows
-      res@(Right _) -> res
+ppure, preturn :: a -> RowParser backend Zero a
+ppure = Pure
+preturn = ppure
 
-type FieldParser backend a
-  = backend -> ColumnInfo backend -> Field backend -> Either String a
+papply :: RowParser backend n (a -> b) -> RowParser backend m a
+       -> RowParser backend (n :+ m) b
+papply pf px = Bind pf $ \f -> pmap (\x -> f x) px
 
-parseRow :: RowParser backend a -> backend -> [ColumnInfo backend]
-         -> Row backend -> Either String a
-parseRow (RowParser f) backend cols row =
-  fmap (\(_, _, x) -> x) $ f backend cols row
+pbind :: RowParser backend n a -> (a -> RowParser backend m b)
+      -> RowParser backend (n :+ m) b
+pbind = Bind
 
-parseRows :: RowParser backend a -> backend -> [ColumnInfo backend]
+pfail :: String -> RowParser backend n a
+pfail = Fail
+
+pbackend :: RowParser backend Zero backend
+pbackend = GetBackend
+
+pconsume :: RowParser backend One (ColumnInfo backend, Field backend)
+pconsume = Consume
+
+execParser :: RowParser backend n a -> backend
+           -> [(ColumnInfo backend, Field backend)]
+           -> Either String ([(ColumnInfo backend, Field backend)], a)
+execParser parser backend pairs = case parser of
+  Pure x  -> return (pairs, x)
+  GetBackend -> return (pairs, backend)
+  Consume -> case pairs of
+    pair : pairs' -> return (pairs', pair)
+    [] -> Left "not enough columns"
+  Bind parser' f -> do
+    (pairs', x) <- execParser parser' backend pairs
+    execParser (f x) backend pairs'
+  Fail msg -> Left msg
+
+class FromRow backend n a | a -> n where
+  fromRow :: RowParser backend n a
+
+  default fromRow :: (Generic a, GFromRow backend ReadCon n (Rep a))
+                  => RowParser backend (n :+ Zero) a
+  fromRow =
+    gfromRow ReadCon Nothing `pbind` \case
+      Nothing -> pfail "GFromRow backend ?: error while parsing"
+      Just x  -> ppure (to x)
+
+data ReadCon = ReadCon
+newtype DontReadCon = DontReadCon BS.ByteString
+
+class GFromRow backend con n f | f -> n where
+  gfromRow :: con -> Maybe BS.ByteString -> RowParser backend n (Maybe (f a))
+
+instance GFromRow backend con Zero V1 where
+  gfromRow _ _ = pfail "GFromRow backend V1: no value for GHC.Generic.V1"
+
+instance GFromRow backend con Zero U1 where
+  gfromRow _ _ = ppure $ Just U1
+
+instance (GFromRow backend con k a, GFromRow backend con l b, (k :+ l) ~ i)
+  => GFromRow backend con i (a :*: b) where
+  gfromRow dbCon brCon =
+    gfromRow dbCon brCon `pbind` \ma ->
+      flip pmap (gfromRow dbCon brCon) (\mb -> ((:*:) <$> ma <*> mb))
+
+instance (GFromRow backend DontReadCon k (a :+: b), 'S k ~ i)
+  => GFromRow backend ReadCon i (a :+: b) where
+  gfromRow ReadCon brCon =
+    pconsume `pbind` \(_, f) -> case fieldValue f of
+      Nothing ->
+        pfail "GFromRow backend (a :+: b): found NULL in place of constructor"
+      Just con -> gfromRow (DontReadCon con) brCon
+
+instance ( GFromRow backend DontReadCon k a, GFromRow backend DontReadCon l b
+         , (k :+ l) ~ i )
+  => GFromRow backend DontReadCon i (a :+: b) where
+  gfromRow dbCon brCon =
+    gfromRow dbCon brCon `pbind` \ml ->
+      flip pmap (gfromRow dbCon brCon) $ \mr -> case (ml, mr) of
+        (Just l, _) -> Just $ L1 l
+        (_, Just r) -> Just $ R1 r
+        _ -> Nothing
+
+instance (FromRow backend n a, SkipColumns backend n)
+  => GFromRow backend DontReadCon n (K1 i a) where
+  gfromRow (DontReadCon con) = \case
+    Just con' | con == con' -> pmap (Just. K1) fromRow
+    _ -> pmap (const Nothing) skipColumns
+
+instance FromRow backend n a => GFromRow backend ReadCon n (K1 i a) where
+  gfromRow ReadCon _ = pmap (Just. K1) fromRow
+
+instance (Constructor c, GFromRow backend ReadCon n a)
+  => GFromRow backend ReadCon n (M1 C c a) where
+  gfromRow dbCon _ = go undefined
+    where
+      go :: (Constructor c, GFromRow backend ReadCon n a)
+         => M1 C c a b -> RowParser backend n (Maybe (M1 C c a b))
+      go m1 = pmap (fmap M1) $ gfromRow dbCon $ Just $ BS.pack $ conName m1
+
+instance (Constructor c, GFromRow backend DontReadCon n a)
+  => GFromRow backend DontReadCon n (M1 C c a) where
+  gfromRow dbCon _ = go undefined
+    where
+      go :: (Constructor c, GFromRow backend DontReadCon n a)
+         => M1 C c a b -> RowParser backend n (Maybe (M1 C c a b))
+      go m1 = pmap (fmap M1) $ gfromRow dbCon $ Just $ BS.pack $ conName m1
+
+instance GFromRow backend con n a => GFromRow backend con n (M1 D c a) where
+  gfromRow dbCon brCon = pmap (fmap M1) (gfromRow dbCon brCon)
+
+instance GFromRow backend con n a => GFromRow backend con n (M1 S c a) where
+  gfromRow dbCon brCon = pmap (fmap M1) (gfromRow dbCon brCon)
+
+class SkipColumns backend n where
+  skipColumns :: RowParser backend n ()
+
+instance SkipColumns backend Zero where
+  skipColumns = ppure ()
+
+instance (SkipColumns backend n, 'S n ~ m) => SkipColumns backend m where
+  skipColumns = pconsume `pbind` \_ -> skipColumns
+
+parseRows :: RowParser backend n a -> backend -> [ColumnInfo backend]
           -> [Row backend] -> Either String [a]
-parseRows parser backend cols rows = mapM (parseRow parser backend cols) rows
+parseRows parser backend cols = mapM (parseRow parser backend cols)
 
-field :: FromField backend a => RowParser backend a
-field = fieldWith fromField
+parseRow :: RowParser backend n a -> backend -> [ColumnInfo backend]
+         -> Row backend -> Either String a
+parseRow parser backend cols row = do
+  let pairs = zip cols row
+  snd <$> execParser parser backend pairs
 
-fieldWith :: FieldParser backend a -> RowParser backend a
-fieldWith parser =
-  RowParser $ \backend -> curry $ \case
-    (col : cols, f : row) -> fmap (cols,row,) (parser backend col f)
-    _ -> Left "not enough columns"
+instance Backend backend => FromRow backend Zero ()
 
-numFieldsRemaining :: RowParser backend Int
-numFieldsRemaining = RowParser $ \_ cols rows -> Right (cols, rows, length rows)
+bytestringParser :: RowParser backend One BS.ByteString
+bytestringParser = pconsume `pbind` \(_, f) -> case fieldValue f of
+  Nothing -> pfail "unexpected NULL"
+  Just bs -> preturn bs
 
-instance FromRow backend () where
-  fromRow = return ()
+readerParser :: Read a => RowParser backend One a
+readerParser = pconsume `pbind` \(_, f) -> case fieldValue f of
+  Nothing -> pfail "unexpected NULL"
+  Just bs ->
+    let str = BS.unpack bs
+    in case reads str of
+      (x,""):_ -> preturn x
+      _ -> pfail $ "unreadable value: " ++ str
 
-instance FromField backend a => FromRow backend (Only a) where
-  fromRow = Only <$> field
+instance FromRow backend One String where
+  fromRow = pmap BS.unpack bytestringParser
 
-instance (FromField backend a, FromField backend b)
-  => FromRow backend (a, b) where
-  fromRow = (,) <$> field <*> field
+instance FromRow backend One BS.ByteString where
+  fromRow = bytestringParser
 
-instance (FromField backend a, FromField backend b, FromField backend c)
-  => FromRow backend (a, b, c) where
-  fromRow = (,,) <$> field <*> field <*> field
+instance FromRow backend One BSL.ByteString where
+  fromRow = pmap BSL.fromStrict bytestringParser
 
-instance ( FromField backend a, FromField backend b, FromField backend c
-         , FromField backend d ) => FromRow backend (a, b, c, d) where
-  fromRow = (,,,) <$> field <*> field <*> field <*> field
+instance FromRow backend One T.Text where
+  fromRow = pmap TE.decodeUtf8 bytestringParser
 
-instance ( FromField backend a, FromField backend b, FromField backend c
-         , FromField backend d, FromField backend e )
-  => FromRow backend (a, b, c, d, e) where
-  fromRow = (,,,,) <$> field <*> field <*> field <*> field <*> field
+instance FromRow backend One TL.Text where
+  fromRow = pmap (TL.fromStrict . TE.decodeUtf8) bytestringParser
 
-instance ( FromField backend a, FromField backend b, FromField backend c
-         , FromField backend d, FromField backend e, FromField backend f )
-  => FromRow backend (a, b, c, d, e, f) where
-  fromRow = (,,,,,) <$> field <*> field <*> field <*> field <*> field <*> field
+instance FromRow backend One Int where
+  fromRow = readerParser
 
-instance ( FromField backend a, FromField backend b, FromField backend c
-         , FromField backend d, FromField backend e, FromField backend f
-         , FromField backend g )
-  => FromRow backend (a, b, c, d, e, f, g) where
-  fromRow = (,,,,,,)
-    <$> field <*> field <*> field <*> field <*> field <*> field <*> field
+instance FromRow backend One Int8 where
+  fromRow = readerParser
 
-instance ( FromField backend a, FromField backend b, FromField backend c
-         , FromField backend d, FromField backend e, FromField backend f
-         , FromField backend g, FromField backend h )
-  => FromRow backend (a, b, c, d, e, f, g, h) where
-  fromRow = (,,,,,,,)
-    <$> field <*> field <*> field <*> field <*> field <*> field <*> field
-    <*> field
+instance FromRow backend One Int16 where
+  fromRow = readerParser
 
-instance ( FromField backend a, FromField backend b, FromField backend c
-         , FromField backend d, FromField backend e, FromField backend f
-         , FromField backend g, FromField backend h, FromField backend i )
-  => FromRow backend (a, b, c, d, e, f, g, h, i) where
-  fromRow = (,,,,,,,,)
-    <$> field <*> field <*> field <*> field <*> field <*> field <*> field
-    <*> field <*> field
+instance FromRow backend One Int32 where
+  fromRow = readerParser
 
-instance ( FromField backend a, FromField backend b, FromField backend c
-         , FromField backend d, FromField backend e, FromField backend f
-         , FromField backend g, FromField backend h, FromField backend i
-         , FromField backend j )
-  => FromRow backend (a, b, c, d, e, f, g, h, i, j) where
-  fromRow = (,,,,,,,,,)
-    <$> field <*> field <*> field <*> field <*> field <*> field <*> field
-    <*> field <*> field <*> field
+instance FromRow backend One Int64 where
+  fromRow = readerParser
 
-instance FromField backend a => FromRow backend [a] where
-  fromRow = do
-    n <- numFieldsRemaining
-    replicateM n field
+instance FromRow backend One Integer where
+  fromRow = readerParser
 
-instance (FromRow backend a, FromRow backend b)
-  => FromRow backend (a :. b) where
-  fromRow = (:.) <$> fromRow <*> fromRow
+instance FromRow backend One Double where
+  fromRow = readerParser
 
-instance FromField backend () where
-  fromField _ _ _ = return ()
+instance FromRow backend One Float where
+  fromRow = readerParser
 
-instance FromField backend a => FromField backend (Maybe a) where
-  fromField _ _ (Field { fieldValue = Nothing }) = return Nothing
-  fromField backend typ f = Just <$> fromField backend typ f
+instance (FromRow backend k a, FromRow backend l b, (k :+ l) ~ i)
+  => FromRow backend i (a, b) where
+  fromRow = (,) `pmap` fromRow `papply` fromRow
+
+instance ( FromRow backend k a, FromRow backend l b, FromRow backend i c
+         , (k :+ l :+ i) ~ j )
+  => FromRow backend j (a, b, c) where
+  fromRow = (,,) `pmap` fromRow `papply` fromRow `papply` fromRow

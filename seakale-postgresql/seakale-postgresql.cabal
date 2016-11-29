@@ -20,6 +20,8 @@ library
                        FlexibleInstances
                        MultiParamTypeClasses
                        FunctionalDependencies
+                       ConstraintKinds
+                       LambdaCase
 
   exposed-modules:     Database.Seakale.PostgreSQL.FromRow
                        Database.Seakale.PostgreSQL.ToRow

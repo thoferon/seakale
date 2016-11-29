@@ -28,6 +28,9 @@ library
                        GADTs
                        ConstraintKinds
                        TypeOperators
+                       OverloadedStrings
+                       DefaultSignatures
+                       DeriveGeneric
 
   exposed-modules:     Database.Seakale.FromRow
                        Database.Seakale.Request
@@ -39,3 +42,4 @@ library
                      , free
                      , mtl
                      , bytestring
+                     , text
