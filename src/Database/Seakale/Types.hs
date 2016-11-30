@@ -11,6 +11,7 @@ import qualified Data.ByteString.Lazy as BSL
 data SeakaleError
   = RowParseError String
   | BackendError BS.ByteString
+  deriving (Show, Eq)
 
 data Nat = O | S Nat
 

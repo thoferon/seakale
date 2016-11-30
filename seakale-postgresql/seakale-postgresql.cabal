@@ -22,8 +22,11 @@ library
                        FunctionalDependencies
                        ConstraintKinds
                        LambdaCase
+                       RecordWildCards
+                       OverloadedStrings
 
-  exposed-modules:     Database.Seakale.PostgreSQL.FromRow
+  exposed-modules:     Database.Seakale.PostgreSQL
+                       Database.Seakale.PostgreSQL.FromRow
                        Database.Seakale.PostgreSQL.ToRow
                        Database.Seakale.PostgreSQL.Types
 
