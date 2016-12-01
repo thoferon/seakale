@@ -1,4 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE OverloadedLists #-}
 
 module Database.Seakale.ToRow
   ( ToRow(..)
@@ -55,7 +56,7 @@ instance (GToRow backend con n a, GToRow backend con m b, (n :+ m) ~ i)
                                    (toValueProxy backend con Nothing)
 
   gtoRow backend con (ProxyProduct a b) =
-    let vec = fst (gtoRow backend con a) `vconcat` fst (gtoRow backend con b)
+    let vec = fst (gtoRow backend con a) `vappend` fst (gtoRow backend con b)
     in (vec, Nothing)
 
 instance ( GToRow backend WithoutCon n a, GToRow backend WithoutCon m b
@@ -75,17 +76,17 @@ instance ( GToRow backend WithoutCon n a, GToRow backend WithoutCon m b
   gtoRow backend con = \case
     ProxySumNone proxyA proxyB ->
       let vec = fst (gtoRow backend con proxyA)
-                `vconcat` fst (gtoRow backend con proxyB)
+                `vappend` fst (gtoRow backend con proxyB)
       in (vec, Nothing)
     ProxySumLeft a proxyB ->
       let (vecA, mConName) =
             gtoRow backend con (toValueProxy backend con (Just a))
-          vec = vecA `vconcat` fst (gtoRow backend con proxyB)
+          vec = vecA `vappend` fst (gtoRow backend con proxyB)
       in (vec, mConName)
     ProxySumRight proxyA b ->
       let (vecB, mConName) =
             gtoRow backend con (toValueProxy backend con (Just b))
-          vec = fst (gtoRow backend con proxyA) `vconcat` vecB
+          vec = fst (gtoRow backend con proxyA) `vappend` vecB
       in (vec, mConName)
 
 instance ( GToRow backend WithoutCon n a, GToRow backend WithoutCon m b
@@ -145,43 +146,43 @@ formatString str = "'" <> escapeQuotes str <> "'"
       in start <> "''" <> escapeQuotes end
 
 instance ToRow backend One String where
-  toRow _ s = Cons (formatString (BS.pack s)) Nil
+  toRow _ s = [formatString $ BS.pack s]
 
 instance ToRow backend One BS.ByteString where
-  toRow _ s = Cons (formatString s) Nil
+  toRow _ s = [formatString s]
 
 instance ToRow backend One BSL.ByteString where
-  toRow _ s = Cons (formatString (BSL.toStrict s)) Nil
+  toRow _ s = [formatString $ BSL.toStrict s]
 
 instance ToRow backend One T.Text where
-  toRow _ s = Cons (formatString (TE.encodeUtf8 s)) Nil
+  toRow _ s = [formatString $ TE.encodeUtf8 s]
 
 instance ToRow backend One TL.Text where
-  toRow _ s = Cons (formatString (TE.encodeUtf8 (TL.toStrict s))) Nil
+  toRow _ s = [formatString $ TE.encodeUtf8 $ TL.toStrict s]
 
 instance ToRow backend One Int where
-  toRow _ n = Cons (BS.pack (show n)) Nil
+  toRow _ n = [BS.pack $ show n]
 
 instance ToRow backend One Int8 where
-  toRow _ n = Cons (BS.pack (show n)) Nil
+  toRow _ n = [BS.pack $ show n]
 
 instance ToRow backend One Int16 where
-  toRow _ n = Cons (BS.pack (show n)) Nil
+  toRow _ n = [BS.pack $ show n]
 
 instance ToRow backend One Int32 where
-  toRow _ n = Cons (BS.pack (show n)) Nil
+  toRow _ n = [BS.pack $ show n]
 
 instance ToRow backend One Int64 where
-  toRow _ n = Cons (BS.pack (show n)) Nil
+  toRow _ n = [BS.pack $ show n]
 
 instance ToRow backend One Integer where
-  toRow _ n = Cons (BS.pack (show n)) Nil
+  toRow _ n = [BS.pack $ show n]
 
 instance ToRow backend One Double where
-  toRow _ n = Cons (BS.pack (show n)) Nil
+  toRow _ n = [BS.pack $ show n]
 
 instance ToRow backend One Float where
-  toRow _ n = Cons (BS.pack (show n)) Nil
+  toRow _ n = [BS.pack $ show n]
 
 instance (NTimes (Vector n), Backend backend, ToRow backend n a)
   => ToRow backend n (Maybe a) where

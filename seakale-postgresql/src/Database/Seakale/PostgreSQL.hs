@@ -8,7 +8,31 @@ module Database.Seakale.PostgreSQL
   , RequestT
   , runRequest
   , runRequestT
+  , Select
+  , SelectT
+  , runSelectT
   , HasConnection(..)
+  , PSQL(..)
+  , SeakaleError(..)
+  , T.Query(..) -- prefixed to export EmptyQuery
+  , Field(..)
+  , Row
+  , ColumnInfo(..)
+  , QueryData
+  , Vector(..)
+  , cons, (<:>)
+  , nil, (<:|)
+  , Zero
+  , One
+  , Two
+  , Three
+  , Four
+  , Five
+  , Six
+  , Seven
+  , Eight
+  , Nine
+  , Ten
   ) where
 
 import           Control.Monad.Except
@@ -23,13 +47,12 @@ import           Data.Word
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
 
-import           Database.PostgreSQL.LibPQ hiding (Row)
+import           Database.PostgreSQL.LibPQ hiding (Row, status)
 
-import           Database.Seakale.PostgreSQL.Types hiding (EmptyQuery)
 import           Database.Seakale.Types
-                   ( SeakaleError(..), Backend(MonadBackend), ColumnInfo(..)
-                   , Row, Field(..), (<:>), (<:|) )
+                   hiding (runQuery, runExecute, EmptyQuery)
 import qualified Database.Seakale.Request.Internal as I
+import qualified Database.Seakale.Storable.Internal as I
 import qualified Database.Seakale.Types as T
 
 data ConnectInfo = ConnectInfo
@@ -50,7 +73,7 @@ toConnectionString ConnectInfo{..} =
 
   where
     quote :: String -> BS.ByteString
-    quote = ("'" <>) . (<> "'") . BS.pack
+    quote = ("'" <>) . (<> "'") . escapeQuotes . BS.pack
 
     escapeQuotes :: BS.ByteString -> BS.ByteString
     escapeQuotes "" = ""
@@ -87,6 +110,8 @@ instance HasConnection m => HasConnection (StateT s m) where
 
 type TypeCache = [(Oid, BS.ByteString)]
 
+data PSQL = PSQL
+
 instance Backend PSQL where
   type ColumnType PSQL = BS.ByteString
 
@@ -98,6 +123,9 @@ instance Backend PSQL where
   runQuery   _ = runExceptT . runQuery
   runExecute _ = runExceptT . runExecute
 
+type RequestT = I.RequestT PSQL
+type Request  = I.Request  PSQL
+
 runRequestT :: (HasConnection m, MonadIO m) => RequestT m a
             -> m (Either SeakaleError a)
 runRequestT =
@@ -106,6 +134,12 @@ runRequestT =
 runRequest :: (HasConnection m, MonadIO m) => Request a
            -> m (Either SeakaleError a)
 runRequest = runRequestT . hoistFreeT (return . runIdentity)
+
+type SelectT = I.SelectT PSQL
+type Select  = I.Select  PSQL
+
+runSelectT :: Monad m => SelectT m a -> RequestT m a
+runSelectT = I.runSelectT
 
 runQuery :: MonadBackend PSQL m => BSL.ByteString
          -> ExceptT BS.ByteString m ([ColumnInfo PSQL], [Row PSQL])

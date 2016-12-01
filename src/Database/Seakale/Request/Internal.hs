@@ -21,28 +21,26 @@ data RequestF backend a
 type RequestT backend = FreeT (RequestF backend)
 type Request  backend = RequestT backend Identity
 
-class Monad m => MonadRequest backend m | m -> backend where
-  query      :: BSL.ByteString -> m ([ColumnInfo backend], [Row backend])
-  execute    :: BSL.ByteString -> m Integer
-  throwError :: SeakaleError   -> m a
-  getBackend :: m backend
+class MonadSeakaleBase backend m => MonadRequest backend m where
+  query   :: BSL.ByteString -> m ([ColumnInfo backend], [Row backend])
+  execute :: BSL.ByteString -> m Integer
+
+instance Monad m => MonadSeakaleBase backend (FreeT (RequestF backend) m) where
+  throwSeakaleError = liftF . ThrowError
+  getBackend        = liftF $ GetBackend id
 
 instance Monad m => MonadRequest backend (FreeT (RequestF backend) m) where
   query   req = liftF $ Query   req id
   execute req = liftF $ Execute req id
-  throwError  = liftF . ThrowError
-  getBackend  = liftF $ GetBackend id
 
 instance {-# OVERLAPPABLE #-} ( MonadRequest backend m, MonadTrans t
                               , Monad (t m) )
   => MonadRequest backend (t m) where
-  query      = lift . query
-  execute    = lift . execute
-  throwError = lift . throwError
-  getBackend = lift getBackend
+  query   = lift . query
+  execute = lift . execute
 
 runRequestT :: (Backend backend, MonadBackend backend m, Monad m)
-            => backend -> RequestT backend m b -> m (Either SeakaleError b)
+            => backend -> RequestT backend m a -> m (Either SeakaleError a)
 runRequestT b = E.runExceptT . iterTM (interpreter b)
   where
     interpreter :: (Backend backend, MonadBackend backend m, Monad m)
@@ -59,5 +57,5 @@ runRequestT b = E.runExceptT . iterTM (interpreter b)
       GetBackend f -> f backend
 
 runRequest :: (Backend backend, MonadBackend backend m, Monad m)
-           => backend -> Request backend b -> m (Either SeakaleError b)
+           => backend -> Request backend a -> m (Either SeakaleError a)
 runRequest backend = runRequestT backend . hoistFreeT (return . runIdentity)

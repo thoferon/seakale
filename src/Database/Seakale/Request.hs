@@ -1,7 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Database.Seakale.Request
-  ( query
+  ( MonadRequest
+  , throwSeakaleError
+  , getBackend
+  , query
   , query_
   , queryWith
   , execute
@@ -14,8 +17,7 @@ module Database.Seakale.Request
   , returningWith_
   ) where
 
-import           Database.Seakale.Request.Internal
-                   (MonadRequest, throwError, getBackend)
+import           Database.Seakale.Request.Internal (MonadRequest)
 import           Database.Seakale.FromRow
 import           Database.Seakale.ToRow
 import           Database.Seakale.Types
@@ -34,7 +36,7 @@ queryWith parser req dat = do
   backend <- getBackend
   (cols, rows) <- I.query $ formatQuery req $ toRow backend dat
   case parseRows parser backend cols rows of
-    Left err -> throwError $ RowParseError err
+    Left err -> throwSeakaleError $ RowParseError err
     Right xs -> return xs
 
 execute :: (MonadRequest b m, ToRow b n r) => Query n -> r -> m Integer
@@ -70,7 +72,7 @@ returningWith parser req bdat adat dat = do
   (cols, rows) <- I.query $ formatMany req
     (toRow backend bdat) (toRow backend adat) (map (toRow backend) dat)
   case parseRows parser backend cols rows of
-    Left err -> throwError $ RowParseError err
+    Left err -> throwSeakaleError $ RowParseError err
     Right xs -> return xs
 
 returning_ :: (MonadRequest b m, ToRow b n r, FromRow b n' s)

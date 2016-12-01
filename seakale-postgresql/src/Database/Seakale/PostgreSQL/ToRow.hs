@@ -5,13 +5,11 @@ module Database.Seakale.PostgreSQL.ToRow
   ( module Database.Seakale.PostgreSQL.ToRow
   ) where
 
-import qualified Database.Seakale.ToRow as S
+import Database.Seakale.ToRow
 
-import           Database.Seakale.PostgreSQL.Types
+import Database.Seakale.PostgreSQL
 
-type ToRow = S.ToRow PSQL
-
-instance S.ToRow PSQL One Bool where
+instance ToRow PSQL One Bool where
   toRow _ = \case
     True  -> Cons "'t'" Nil
     False -> Cons "'f'" Nil

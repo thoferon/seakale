@@ -28,7 +28,6 @@ library
   exposed-modules:     Database.Seakale.PostgreSQL
                        Database.Seakale.PostgreSQL.FromRow
                        Database.Seakale.PostgreSQL.ToRow
-                       Database.Seakale.PostgreSQL.Types
 
   build-depends:       base >=4.8 && <4.9
                      , seakale

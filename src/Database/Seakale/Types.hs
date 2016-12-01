@@ -4,6 +4,8 @@ module Database.Seakale.Types where
 
 import           GHC.Exts
 
+import           Control.Monad.Trans
+
 import           Data.Monoid
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
@@ -12,6 +14,16 @@ data SeakaleError
   = RowParseError String
   | BackendError BS.ByteString
   deriving (Show, Eq)
+
+class Monad m => MonadSeakaleBase backend m | m -> backend where
+  getBackend        :: m backend
+  throwSeakaleError :: SeakaleError -> m a
+
+instance {-# OVERLAPPABLE #-} ( MonadSeakaleBase backend m, MonadTrans t
+                              , Monad (t m) )
+  => MonadSeakaleBase backend (t m) where
+  throwSeakaleError = lift . throwSeakaleError
+  getBackend        = lift getBackend
 
 data Nat = O | S Nat
 
@@ -36,6 +48,22 @@ data Query :: Nat -> * where
   Hole       :: Query n -> Query ('S n)
   EmptyQuery :: Query Zero
 
+qappend :: Query n -> Query m -> Query (n :+ m)
+qappend q1 q2 = case q1 of
+  Plain bs q1' -> Plain bs (qappend q1' q2)
+  Hole     q1' -> Hole     (qappend q1' q2)
+  EmptyQuery   -> q2
+
+-- Hack to prevent GHC to fail on (n :+ 'O) ~ n with qappend
+qappendZero :: Query n -> Query Zero -> Query n
+qappendZero q1 q2 = case q1 of
+  Plain bs q1' -> Plain bs (qappendZero q1' q2)
+  Hole     q1' -> Hole     (qappendZero q1' q2)
+  EmptyQuery   -> q2
+
+parenthesiseQuery :: Query n -> Query n
+parenthesiseQuery q = Plain "(" $ q `qappendZero` Plain ")" EmptyQuery
+
 data RepeatQuery :: Nat -> Nat -> Nat -> * where
   RepeatQuery :: Query k -> Query l -> Query i -> RepeatQuery k l i
 
@@ -56,9 +84,7 @@ formatMany (RepeatQuery before between after) beforeData afterData dat =
   <> mconcat (map (formatQuery between) dat)
   <> formatQuery after afterData
 
-data Field backend = Field
-  { fieldValue :: Maybe BS.ByteString
-  }
+newtype Field backend = Field { fieldValue :: Maybe BS.ByteString }
 
 type Row backend = [Field backend]
 
@@ -101,9 +127,34 @@ nil = Nil
 
 infixr 5 <:|
 
-vconcat :: Vector n a -> Vector m a -> Vector (n :+ m) a
-vconcat Nil xs = xs
-vconcat (Cons x xs) ys = Cons x (vconcat xs ys)
+vappend :: Vector n a -> Vector m a -> Vector (n :+ m) a
+vappend Nil xs = xs
+vappend (Cons x xs) ys = Cons x (vappend xs ys)
+
+vectorToList :: Vector n a -> [a]
+vectorToList = \case
+  Nil -> []
+  Cons x xs -> x : vectorToList xs
+
+singleton :: a -> Vector One a
+singleton x = Cons x Nil
+
+instance IsList (Vector Zero a) where
+  type Item (Vector Zero a) = a
+
+  fromList [] = Nil
+  fromList _ = error "IsList (Vector n): too many elements"
+
+  toList Nil = []
+
+instance (IsList (Vector n a), Item (Vector n a) ~ a)
+  => IsList (Vector ('S n) a) where
+  type Item (Vector ('S n) a) = a
+
+  fromList [] = error "IsList (Vector n): too few elements"
+  fromList (x:xs) = Cons x (fromList xs)
+
+  toList (Cons x xs) = x : toList xs
 
 class NTimes f where
   ntimes :: a -> f a
