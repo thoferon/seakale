@@ -73,13 +73,13 @@ toConnectionString ConnectInfo{..} =
 
   where
     quote :: String -> BS.ByteString
-    quote = ("'" <>) . (<> "'") . escapeQuotes . BS.pack
+    quote = ("'" <>) . (<> "'") . escapeQuotes "" . BS.pack
 
-    escapeQuotes :: BS.ByteString -> BS.ByteString
-    escapeQuotes "" = ""
-    escapeQuotes s =
+    escapeQuotes :: BS.ByteString -> BS.ByteString -> BS.ByteString
+    escapeQuotes _ "" = ""
+    escapeQuotes prefix s =
       let (start, end) = fmap (BS.drop 1) $ BS.break (=='\'') s
-      in start <> "''" <> escapeQuotes end
+      in prefix <> start <> escapeQuotes "''" end
 
 connect :: ConnectInfo -> IO Connection
 connect = connectString . toConnectionString
