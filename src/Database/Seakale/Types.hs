@@ -13,6 +13,7 @@ import qualified Data.ByteString.Lazy as BSL
 data SeakaleError
   = RowParseError String
   | BackendError BS.ByteString
+  | EntityNotFoundError
   deriving (Show, Eq)
 
 class Monad m => MonadSeakaleBase backend m | m -> backend where

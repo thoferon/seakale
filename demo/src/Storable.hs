@@ -27,8 +27,7 @@ instance Storable PSQL Two One TableInfo where
 instance FromRow PSQL Two (EntityID TableInfo)
 
 dbProg :: Select [Entity TableInfo]
-dbProg =
-  undefined -- FIXME
+dbProg = select mempty $ asc EntityID
 
 main :: IO ()
 main = withConn $ \conn -> do
