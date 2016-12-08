@@ -1,5 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module Database.Seakale.Storable.Internal where
 
 import           Control.Monad.Identity
@@ -40,32 +38,6 @@ class Storable backend (k :: Nat) (l :: Nat) a | a -> k, a -> l where
   data EntityID a :: *
   relation :: Relation backend k l a
 
-combineRelationNames :: BS.ByteString -> RelationName -> RelationName
-                     -> RelationName
-combineRelationNames joinStmt l r = RelationName $ \prefix ->
-  unRelationName l (prefix <> "l")
-  <> joinStmt
-  <> unRelationName r (prefix <> "r")
-
-combineRelationColumns :: Vector k Column -> Vector l Column
-                       -> Vector (k :+ l) Column
-combineRelationColumns l r =
-  fmap (\col -> Column $ unColumn col . (<> "l")) l
-  `vappend`
-  fmap (\col -> Column $ unColumn col . (<> "r")) r
-
-combineRelations :: BS.ByteString -> Relation backend k l a
-                 -> Relation backend i j b
-                 -> Relation backend (k :+ i) (l :+ j) c
-combineRelations joinStmt relA relB = Relation
-  { relationName =
-      combineRelationNames joinStmt (relationName relA) (relationName relB)
-  , relationIDColumns =
-      combineRelationColumns (relationIDColumns relA) (relationIDColumns relB)
-  , relationColumns =
-      combineRelationColumns (relationColumns relA) (relationColumns relB)
-  }
-
 data Condition backend a
   = forall n. Condition (BS.ByteString -> backend -> (Query n, QueryData n))
 
@@ -97,6 +69,9 @@ buildCondition op vec dat =
     go f (Cons x xs) =
       f $ Plain (x <> " " <> op <> " ") $ Hole $ go (Plain " AND ") xs
 
+unsafeCastCondition :: Condition backend a -> Condition backend b
+unsafeCastCondition (Condition f) = Condition f
+
 data SelectClauses backend a = SelectClauses
   { selectGroupBy :: [Column]
   , selectOrderBy :: (Bool, [Column])
@@ -119,6 +94,9 @@ instance Monoid (SelectClauses backend a) where
     , selectLimit   = maybe (selectLimit sc1) Just (selectLimit sc2)
     , selectOffset  = maybe (selectOffset sc1) Just (selectOffset sc2)
     }
+
+unsafeCastSelectClauses :: SelectClauses backend a -> SelectClauses backend b
+unsafeCastSelectClauses SelectClauses{..} = SelectClauses{..}
 
 buildWhereClause :: backend -> Condition backend a -> BSL.ByteString
 buildWhereClause backend (Condition f) =

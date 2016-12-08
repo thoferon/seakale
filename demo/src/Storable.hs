@@ -11,12 +11,10 @@ import Database.Seakale.Storable
 
 import Shared
 
-newtype TableInfo = TableInfo { numRows :: Integer } deriving Generic
+newtype TableStats = TableStats { numRows :: Integer } deriving Generic
 
-instance FromRow PSQL One TableInfo
-
-instance Storable PSQL Two One TableInfo where
-  data EntityID TableInfo = TableID String String deriving Generic
+instance Storable PSQL Two One TableStats where
+  data EntityID TableStats = TableStatsID String String deriving Generic
 
   relation = Relation
     { relationName      = "pg_stat_user_tables"
@@ -24,9 +22,10 @@ instance Storable PSQL Two One TableInfo where
     , relationColumns   = ["n_live_tup"]
     }
 
-instance FromRow PSQL Two (EntityID TableInfo)
+instance FromRow PSQL One TableStats
+instance FromRow PSQL Two (EntityID TableStats)
 
-dbProg :: Select [Entity TableInfo]
+dbProg :: Select [Entity TableStats]
 dbProg = select mempty $ asc EntityID
 
 main :: IO ()
@@ -35,6 +34,6 @@ main = withConn $ \conn -> do
   case eRes of
     Left err -> hPutStrLn stderr $ "Error: " ++ show err
     Right res ->
-      forM_ res $ \(Entity (TableID schemaName relName) TableInfo{..}) ->
+      forM_ res $ \(Entity (TableStatsID schemaName relName) TableStats{..}) ->
         putStrLn $ "Table " ++ schemaName ++ "." ++ relName ++ " has around "
                    ++ show numRows ++ " rows."

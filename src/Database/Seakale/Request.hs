@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Database.Seakale.Request
   ( MonadRequest
   , throwSeakaleError

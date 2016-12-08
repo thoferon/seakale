@@ -2,7 +2,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Database.Seakale.PostgreSQL.ToRow
-  ( module Database.Seakale.PostgreSQL.ToRow
+  ( module Database.Seakale.ToRow
   ) where
 
 import Database.Seakale.ToRow

@@ -1,4 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE OverloadedLists #-}
 
 module Database.Seakale.ToRow

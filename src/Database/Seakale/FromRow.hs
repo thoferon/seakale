@@ -1,12 +1,11 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module Database.Seakale.FromRow
   ( RowParser
-  , pmap, ppure, preturn, papply, pbind, pfail
+  , pmap, ppure, preturn, papply, pbind, pfail, pempty, por
   , pbackend, pconsume
   , FromRow(..)
   , parseRows
   , parseRow
+  , Null(..)
   ) where
 
 import           GHC.Generics
@@ -34,6 +33,8 @@ data RowParser backend :: Nat -> * -> * where
   Pure       :: a -> RowParser backend Zero a
   Bind       :: RowParser backend n a -> (a -> RowParser backend m b)
              -> RowParser backend (n :+ m) b
+  Or         :: RowParser backend n a -> RowParser backend n a
+             -> RowParser backend n a
   Fail       :: String -> RowParser backend n a
 
 pmap :: (a -> b) -> RowParser backend n a -> RowParser backend n b
@@ -42,6 +43,7 @@ pmap f = \case
   Consume       -> Bind Consume $ \x -> Pure $ f x
   Pure x        -> Pure $ f x
   Bind parser g -> Bind parser $ \x -> pmap f $ g x
+  Or par1 par2  -> Or (fmap f par1) (fmap f par2)
   Fail msg      -> Fail msg
 
 instance Functor (RowParser backend n) where
@@ -62,6 +64,12 @@ pbind = Bind
 pfail :: String -> RowParser backend n a
 pfail = Fail
 
+pempty :: RowParser backend n a
+pempty = pfail "pempty"
+
+por :: RowParser backend n a -> RowParser backend n a -> RowParser backend n a
+por = Or
+
 pbackend :: RowParser backend Zero backend
 pbackend = GetBackend
 
@@ -80,6 +88,12 @@ execParser parser backend pairs = case parser of
   Bind parser' f -> do
     (pairs', x) <- execParser parser' backend pairs
     execParser (f x) backend pairs'
+  Or parser1 parser2 ->
+    let eRes1 = execParser parser1 backend pairs
+        eRes2 = execParser parser2 backend pairs
+    in case eRes1 of
+      Right _ -> eRes1
+      _ -> eRes2
   Fail msg -> Left msg
 
 class FromRow backend n a | a -> n where
@@ -178,6 +192,20 @@ parseRow parser backend cols row = do
   let pairs = zip cols row
   snd <$> execParser parser backend pairs
 
+data Null = Null
+
+instance FromRow backend One Null where
+  fromRow = pconsume `pbind` \(_, f) -> case fieldValue f of
+    Nothing -> preturn Null
+    Just _  -> pfail "expected NULL"
+
+instance FromRow backend Zero (Vector Zero a) where
+  fromRow = preturn Nil
+
+instance (FromRow backend One a, FromRow backend n (Vector n a))
+  => FromRow backend ('S n) (Vector ('S n) a) where
+  fromRow = fromRow `pbind` \x -> pmap (\xs -> x `cons` xs) fromRow
+
 instance Backend backend => FromRow backend Zero ()
 
 bytestringParser :: RowParser backend One BS.ByteString
@@ -232,6 +260,11 @@ instance FromRow backend One Double where
 
 instance FromRow backend One Float where
   fromRow = readerParser
+
+instance (FromRow backend k a, FromRow backend k (Vector k Null))
+  => FromRow backend k (Maybe a) where
+  fromRow = pmap Just fromRow `por`
+    (pmap (\_ -> Nothing) (fromRow :: RowParser backend k (Vector k Null)))
 
 instance (FromRow backend k a, FromRow backend l b, (k :+ l) ~ i)
   => FromRow backend i (a, b) where

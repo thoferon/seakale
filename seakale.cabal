@@ -32,12 +32,16 @@ library
                        DefaultSignatures
                        DeriveGeneric
                        RecordWildCards
+                       UndecidableInstances
+                       GeneralizedNewtypeDeriving
+                       ScopedTypeVariables
 
   exposed-modules:     Database.Seakale.FromRow
                        Database.Seakale.Request
                        Database.Seakale.Request.Internal
                        Database.Seakale.Storable
                        Database.Seakale.Storable.Internal
+                       Database.Seakale.Storable.Join
                        Database.Seakale.ToRow
                        Database.Seakale.Types
 

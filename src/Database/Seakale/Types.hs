@@ -1,5 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module Database.Seakale.Types where
 
 import           GHC.Exts

@@ -1,5 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module Database.Seakale.Request.Internal where
 
 import           Control.Monad.Identity
