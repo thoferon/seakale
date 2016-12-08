@@ -8,13 +8,12 @@ module Database.Seakale.Storable.Join
   , table
   , leftJoin
   , leftJoin_
-  , JoinCondition
-  , (~.)
   ) where
 
 import           Data.List
 import           Data.Monoid
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy as BSL
 
 import           Database.Seakale.FromRow
 import           Database.Seakale.Storable
@@ -78,52 +77,34 @@ selectJoin_ :: ( MonadSelect backend m, IsJoin f
 selectJoin_ rel cond = selectJoin rel cond mempty
 
 leftJoin :: (backend -> Relation backend k l a)
-         -> (backend -> Relation backend i j b) -> JoinCondition backend a b
+         -> (backend -> Relation backend i j b)
+         -> Condition backend (Join a b)
          -> backend -> Relation backend (k :+ i) (l :+ j) (LeftJoin a b)
 leftJoin = mkJoin "LEFT JOIN"
 
 leftJoin_ :: (Storable backend k l a, Storable backend i j b)
-          => JoinCondition backend a b
+          => Condition backend (Join a b)
           -> backend -> Relation backend (k :+ i) (l :+ j) (LeftJoin a b)
 leftJoin_ = leftJoin table table
-
--- FIXME: It should use Condition backend a b instead.
-newtype JoinCondition backend a b
-  = JoinCondition (backend -> [(Column, Column)])
-  deriving Monoid
-
--- FIXME: How to make sure c and d are compatible types? It should still be
--- possible to use (leftJoin (EntityID ~. EntityID)) so we can use c twice.
-(~.) :: (Property backend a f, Property backend b g)
-     => f backend n c -> g backend n d -> JoinCondition backend a b
-(~.) prop1 prop2 =
-  let cols1 = vectorToList $ toColumns prop1
-      cols2 = vectorToList $ toColumns prop2
-  in JoinCondition $ \_ -> zip cols1 cols2
 
 table :: Storable backend k l a => backend -> Relation backend k l a
 table _ = relation
 
-mkJoin :: BS.ByteString -> (backend -> Relation backend k l a)
+mkJoin :: IsJoin f => BS.ByteString -> (backend -> Relation backend k l a)
        -> (backend -> Relation backend i j b)
-       -> JoinCondition backend a b
-       -> backend -> Relation backend (k :+ i) (l :+ j) (LeftJoin a b)
-mkJoin joinStmt relA relB (JoinCondition f) backend =
-  combineRelations joinStmt (relA backend) (relB backend) (f backend)
+       -> Condition backend (Join a b)
+       -> backend -> Relation backend (k :+ i) (l :+ j) (f a b)
+mkJoin joinStmt relA relB cond backend =
+  combineRelations joinStmt backend (relA backend) (relB backend)
+                   (castCondition cond)
 
-buildJoinConditions :: BS.ByteString -> [(Column, Column)] -> BS.ByteString
-buildJoinConditions prefix =
-  let buildCond (colA, colB) =
-        unColumn colA (prefix <> "l") <> " = " <> unColumn colB (prefix <> "r")
-  in mconcat . intersperse " AND " . map buildCond
-
-combineRelationNames :: BS.ByteString -> RelationName -> RelationName
-                     -> [(Column, Column)] -> RelationName
-combineRelationNames joinStmt l r pairs = RelationName $ \prefix ->
+combineRelationNames :: BS.ByteString -> backend -> RelationName -> RelationName
+                     -> Condition backend a -> RelationName
+combineRelationNames joinStmt backend l r cond = RelationName $ \prefix ->
   unRelationName l (prefix <> "l")
   <> " " <> joinStmt <> " "
   <> unRelationName r (prefix <> "r")
-  <> if null pairs then "" else " ON " <> buildJoinConditions prefix pairs
+  <> BSL.toStrict (I.buildOnClause cond prefix backend)
 
 combineRelationColumns :: Vector k Column -> Vector l Column
                        -> Vector (k :+ l) Column
@@ -132,13 +113,13 @@ combineRelationColumns l r =
   `vappend`
   fmap (\col -> Column $ unColumn col . (<> "r")) r
 
-combineRelations :: BS.ByteString -> Relation backend k l a
-                 -> Relation backend i j b -> [(Column, Column)]
+combineRelations :: BS.ByteString -> backend -> Relation backend k l a
+                 -> Relation backend i j b -> Condition backend c
                  -> Relation backend (k :+ i) (l :+ j) c
-combineRelations joinStmt relA relB pairs = Relation
+combineRelations joinStmt backend relA relB cond = Relation
   { relationName =
-      combineRelationNames joinStmt (relationName relA) (relationName relB)
-                           pairs
+      combineRelationNames joinStmt backend
+                           (relationName relA) (relationName relB) cond
   , relationIDColumns =
       combineRelationColumns (relationIDColumns relA) (relationIDColumns relB)
   , relationColumns =

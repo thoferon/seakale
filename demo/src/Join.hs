@@ -33,8 +33,8 @@ instance Property backend TableStats TableStatsProperty where
   toColumns TableStatsNumRows = ["n_live_tup"]
 
 data TableInfo = TableInfo
-  { hasRules    :: String
-  , hasTriggers :: String
+  { hasRules    :: Bool
+  , hasTriggers :: Bool
   } deriving Generic
 
 instance Storable PSQL Two Two TableInfo where
@@ -51,7 +51,7 @@ instance FromRow PSQL Two TableInfo
 
 dbProg :: Select [LeftJoin TableStats TableInfo]
 dbProg =
-  selectJoin (leftJoin_ (EntityID ~. EntityID))
+  selectJoin (leftJoin_ (JLeft EntityID ==~ JRight EntityID))
              (JLeft TableStatsNumRows >. 0)
              (asc (JLeft TableStatsNumRows))
 

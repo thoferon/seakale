@@ -31,6 +31,18 @@ module Database.Seakale.Storable
   , (<.)
   , (>=.)
   , (>.)
+  , (==#)
+  , (/=#)
+  , (<=#)
+  , (<#)
+  , (>=#)
+  , (>#)
+  , (==~)
+  , (/=~)
+  , (<=~)
+  , (<~)
+  , (>=~)
+  , (>~)
   , (&&.)
   , (||.)
   , isNull
@@ -178,6 +190,54 @@ class Property backend a f | f -> a where
      -> Condition backend a
 (>.) cols vals =
   buildCondition ">" (toColumns cols) (\backend -> toRow backend vals)
+
+(==#) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n b -> Condition backend a
+(==#) prop1 prop2 = buildCondition' "=" (toColumns prop1) (toColumns prop2)
+
+(/=#) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n b -> Condition backend a
+(/=#) prop1 prop2 = buildCondition' "<>" (toColumns prop1) (toColumns prop2)
+
+(<#) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n b -> Condition backend a
+(<#) prop1 prop2 = buildCondition' "<" (toColumns prop1) (toColumns prop2)
+
+(<=#) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n b -> Condition backend a
+(<=#) prop1 prop2 = buildCondition' "<=" (toColumns prop1) (toColumns prop2)
+
+(>#) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n b -> Condition backend a
+(>#) prop1 prop2 = buildCondition' ">" (toColumns prop1) (toColumns prop2)
+
+(>=#) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n b -> Condition backend a
+(>=#) prop1 prop2 = buildCondition' ">=" (toColumns prop1) (toColumns prop2)
+
+(==~) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n c -> Condition backend a
+(==~) prop1 prop2 = buildCondition' "=" (toColumns prop1) (toColumns prop2)
+
+(/=~) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n c -> Condition backend a
+(/=~) prop1 prop2 = buildCondition' "<>" (toColumns prop1) (toColumns prop2)
+
+(<~) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n c -> Condition backend a
+(<~) prop1 prop2 = buildCondition' "<" (toColumns prop1) (toColumns prop2)
+
+(<=~) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n c -> Condition backend a
+(<=~) prop1 prop2 = buildCondition' "<=" (toColumns prop1) (toColumns prop2)
+
+(>~) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n c -> Condition backend a
+(>~) prop1 prop2 = buildCondition' ">" (toColumns prop1) (toColumns prop2)
+
+(>=~) :: (Property backend a f, Property backend a g)
+      => f backend n b -> g backend n c -> Condition backend a
+(>=~) prop1 prop2 = buildCondition' ">=" (toColumns prop1) (toColumns prop2)
 
 (&&.) :: Condition backend a -> Condition backend a -> Condition backend a
 (&&.) = mappend

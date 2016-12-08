@@ -69,6 +69,17 @@ buildCondition op vec dat =
     go f (Cons x xs) =
       f $ Plain (x <> " " <> op <> " ") $ Hole $ go (Plain " AND ") xs
 
+buildCondition' :: BS.ByteString -> Vector n Column -> Vector n Column
+                -> Condition backend a
+buildCondition' op vec1 vec2 =
+  Condition $ \prefix backend ->
+    let q = mconcat . intersperse " AND "
+          . map (\(col1, col2) -> unColumn col1 prefix
+                                  <> " " <> op <> " "
+                                  <> unColumn col2 prefix)
+          $ zip (vectorToList vec1) (vectorToList vec2)
+    in (Plain q EmptyQuery, Nil)
+
 unsafeCastCondition :: Condition backend a -> Condition backend b
 unsafeCastCondition (Condition f) = Condition f
 
@@ -98,10 +109,17 @@ instance Monoid (SelectClauses backend a) where
 unsafeCastSelectClauses :: SelectClauses backend a -> SelectClauses backend b
 unsafeCastSelectClauses SelectClauses{..} = SelectClauses{..}
 
-buildWhereClause :: backend -> Condition backend a -> BSL.ByteString
-buildWhereClause backend (Condition f) =
-  let cond_ = uncurry formatQuery $ f "" backend
+buildWhereClause :: Condition backend a -> BS.ByteString -> backend
+                 -> BSL.ByteString
+buildWhereClause (Condition f) prefix backend =
+  let cond_ = uncurry formatQuery $ f prefix backend
   in if BSL.null cond_ then "" else " WHERE " <> cond_
+
+buildOnClause :: Condition backend a -> BS.ByteString -> backend
+              -> BSL.ByteString
+buildOnClause (Condition f) prefix backend =
+  let cond_ = uncurry formatQuery $ f prefix backend
+  in if BSL.null cond_ then "" else " ON " <> cond_
 
 buildColumnList :: [Column] -> BSL.ByteString
 buildColumnList = BSL.fromChunks . intersperse ", " . map (($ "") . unColumn)
@@ -130,7 +148,7 @@ buildSelectRequest backend Relation{..} cond clauses =
   "SELECT " <> buildColumnList (vectorToList relationIDColumns) <> ", "
             <> buildColumnList (vectorToList relationColumns)
             <> " FROM " <> buildRelationName relationName
-            <> buildWhereClause backend cond <> buildSelectClauses clauses
+            <> buildWhereClause cond "" backend <> buildSelectClauses clauses
 
 data SelectF backend a
   = forall k l b. Select (Relation backend k l b) (Condition backend b)
@@ -267,13 +285,13 @@ buildUpdateRequest :: backend -> Relation backend k l a
 buildUpdateRequest backend Relation{..} setter cond =
   "UPDATE " <> buildRelationName relationName <> " SET "
             <> buildSetter backend setter
-            <> buildWhereClause backend cond
+            <> buildWhereClause cond "" backend
 
 buildDeleteRequest :: backend -> Relation backend k l a -> Condition backend a
                    -> BSL.ByteString
 buildDeleteRequest backend Relation{..} cond =
   "DELETE FROM " <> buildRelationName relationName
-                 <> buildWhereClause backend cond
+                 <> buildWhereClause cond "" backend
 
 runStoreT :: Monad m => StoreT backend m a -> RequestT backend m a
 runStoreT = iterT interpreter . hoistFreeT runSelectT
