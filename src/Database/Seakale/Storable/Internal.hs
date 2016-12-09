@@ -72,7 +72,7 @@ buildCondition op vec dat =
 buildCondition' :: BS.ByteString -> Vector n Column -> Vector n Column
                 -> Condition backend a
 buildCondition' op vec1 vec2 =
-  Condition $ \prefix backend ->
+  Condition $ \prefix _ ->
     let q = mconcat . intersperse " AND "
           . map (\(col1, col2) -> unColumn col1 prefix
                                   <> " " <> op <> " "

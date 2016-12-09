@@ -3,14 +3,22 @@ module Database.Seakale.Storable.Join
   , JoinLeftProperty(..)
   , JoinRightProperty(..)
   , LeftJoin(..)
+  , RightJoin(..)
+  , InnerJoin(..)
+  , FullJoin(..)
   , selectJoin
   , selectJoin_
   , table
   , leftJoin
   , leftJoin_
+  , rightJoin
+  , rightJoin_
+  , innerJoin
+  , innerJoin_
+  , fullJoin
+  , fullJoin_
   ) where
 
-import           Data.List
 import           Data.Monoid
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
@@ -54,6 +62,41 @@ instance ( FromRow backend k (EntityID a), FromRow backend l a
   fromRow = (\li mri lv mrv -> LeftJoin (Entity li lv) (Entity <$> mri <*> mrv))
               `pmap` fromRow `papply` fromRow `papply` fromRow `papply` fromRow
 
+data RightJoin a b = RightJoin (Maybe (Entity a)) (Entity b)
+
+instance IsJoin RightJoin
+
+instance ( FromRow backend k (Maybe (EntityID a)), FromRow backend l (Maybe a)
+         , FromRow backend i (EntityID b), FromRow backend j b
+         , (k :+ i :+ l :+ j) ~ n )
+  => FromRow backend n (RightJoin a b) where
+  fromRow = (\mli ri mlv rv -> RightJoin (Entity <$> mli <*> mlv)
+                                         (Entity ri rv))
+              `pmap` fromRow `papply` fromRow `papply` fromRow `papply` fromRow
+
+data InnerJoin a b = InnerJoin (Entity a) (Entity b)
+
+instance IsJoin InnerJoin
+
+instance ( FromRow backend k (EntityID a), FromRow backend l a
+         , FromRow backend i (EntityID b), FromRow backend j b
+         , (k :+ i :+ l :+ j) ~ n )
+  => FromRow backend n (InnerJoin a b) where
+  fromRow = (\li ri lv rv -> InnerJoin (Entity li lv) (Entity ri rv))
+              `pmap` fromRow `papply` fromRow `papply` fromRow `papply` fromRow
+
+data FullJoin a b = FullJoin (Maybe (Entity a)) (Maybe (Entity b))
+
+instance IsJoin FullJoin
+
+instance ( FromRow backend k (Maybe (EntityID a)), FromRow backend l (Maybe a)
+         , FromRow backend i (Maybe (EntityID b)), FromRow backend j (Maybe b)
+         , (k :+ i :+ l :+ j) ~ n )
+  => FromRow backend n (FullJoin a b) where
+  fromRow = (\mli mri mlv mrv -> FullJoin (Entity <$> mli <*> mlv)
+                                          (Entity <$> mri <*> mrv))
+              `pmap` fromRow `papply` fromRow `papply` fromRow `papply` fromRow
+
 selectJoin :: ( MonadSelect backend m, IsJoin f
               , Storable backend k l a , Storable backend i j b
               , FromRow backend ((k :+ l) :+ (i :+ j)) (f a b) )
@@ -86,6 +129,39 @@ leftJoin_ :: (Storable backend k l a, Storable backend i j b)
           => Condition backend (Join a b)
           -> backend -> Relation backend (k :+ i) (l :+ j) (LeftJoin a b)
 leftJoin_ = leftJoin table table
+
+rightJoin :: (backend -> Relation backend k l a)
+          -> (backend -> Relation backend i j b)
+          -> Condition backend (Join a b)
+          -> backend -> Relation backend (k :+ i) (l :+ j) (RightJoin a b)
+rightJoin = mkJoin "RIGHT JOIN"
+
+rightJoin_ :: (Storable backend k l a, Storable backend i j b)
+           => Condition backend (Join a b)
+           -> backend -> Relation backend (k :+ i) (l :+ j) (RightJoin a b)
+rightJoin_ = rightJoin table table
+
+innerJoin :: (backend -> Relation backend k l a)
+          -> (backend -> Relation backend i j b)
+          -> Condition backend (Join a b)
+          -> backend -> Relation backend (k :+ i) (l :+ j) (InnerJoin a b)
+innerJoin = mkJoin "INNER JOIN"
+
+innerJoin_ :: (Storable backend k l a, Storable backend i j b)
+           => Condition backend (Join a b)
+           -> backend -> Relation backend (k :+ i) (l :+ j) (InnerJoin a b)
+innerJoin_ = innerJoin table table
+
+fullJoin :: (backend -> Relation backend k l a)
+         -> (backend -> Relation backend i j b)
+         -> Condition backend (Join a b)
+         -> backend -> Relation backend (k :+ i) (l :+ j) (FullJoin a b)
+fullJoin = mkJoin "FULL JOIN"
+
+fullJoin_ :: (Storable backend k l a, Storable backend i j b)
+          => Condition backend (Join a b)
+          -> backend -> Relation backend (k :+ i) (l :+ j) (FullJoin a b)
+fullJoin_ = fullJoin table table
 
 table :: Storable backend k l a => backend -> Relation backend k l a
 table _ = relation

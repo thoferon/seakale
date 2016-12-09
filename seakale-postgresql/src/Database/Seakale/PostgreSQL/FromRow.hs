@@ -8,7 +8,6 @@ import qualified Data.ByteString.Char8 as BS
 
 import           Database.Seakale.FromRow
 import           Database.Seakale.PostgreSQL
-import           Database.Seakale.Types
 
 instance FromRow PSQL One Bool where
   fromRow = pconsume `pbind` \(_, f) -> case fieldValue f of
