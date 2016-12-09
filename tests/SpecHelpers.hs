@@ -52,9 +52,12 @@ instance Property PSQL User UserProperty where
     UserEmail    -> ["email"]
     UserPassword -> ["password"]
 
+idCol :: ColumnInfo PSQL
+idCol = ColumnInfo (Just "id") "int4"
+
 userCols :: [ColumnInfo PSQL]
 userCols =
-  [ ColumnInfo (Just "id")       "int4"
+  [ idCol
   , ColumnInfo (Just "email")    "varchar"
   , ColumnInfo (Just "password") "varchar"
   ]
@@ -72,3 +75,11 @@ user99Row =
   , Field (Just "user99@host")
   , Field (Just "secret")
   ]
+
+user42, user99 :: User
+user42 = User "user42@host" "secret"
+user99 = User "user99@host" "secret"
+
+user42Ent, user99Ent :: Entity User
+user42Ent = Entity (UserID 42) user42
+user99Ent = Entity (UserID 99) user99
