@@ -1,6 +1,8 @@
 module Database.Seakale.Request.Tests
   ( runRequestT
   , runRequest
+  , runRequestT'
+  , runRequest'
   , module Database.Seakale.Request.Tests.Mock
   ) where
 
@@ -59,8 +61,17 @@ runExecute req = para (phi f)
 
 runRequestT :: Monad m => backend -> Mock backend b
             -> RequestT backend m a -> m (Either SeakaleError a)
-runRequestT b m =
-    fmap fst . flip runStateT m . E.runExceptT . iterT (interpreter b)
+runRequestT b m = fmap fst . runRequestT' b m
+
+runRequest :: backend -> Mock backend b -> Request backend a
+           -> Either SeakaleError a
+runRequest b m = fst . runRequest' b m
+
+runRequestT' :: Monad m => backend -> Mock backend b
+             -> RequestT backend m a
+             -> m (Either SeakaleError a, Mock backend b)
+runRequestT' b m =
+    flip runStateT m . E.runExceptT . iterT (interpreter b)
    . hoistFreeT (lift . lift)
   where
     interpreter :: Monad m => backend
@@ -83,6 +94,6 @@ runRequestT b m =
       ThrowError err -> E.throwError err
       GetBackend f -> f backend
 
-runRequest :: backend -> Mock backend b -> Request backend a
-           -> Either SeakaleError a
-runRequest backend mock = runIdentity . runRequestT backend mock
+runRequest' :: backend -> Mock backend b -> Request backend a
+            -> (Either SeakaleError a, Mock backend b)
+runRequest' backend mock = runIdentity . runRequestT' backend mock
