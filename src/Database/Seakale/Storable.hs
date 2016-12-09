@@ -73,6 +73,9 @@ data Entity a = Entity
   , entityVal :: a
   }
 
+deriving instance (Show (EntityID a), Show a) => Show (Entity a)
+deriving instance (Eq   (EntityID a), Eq   a) => Eq   (Entity a)
+
 instance (FromRow backend k (EntityID a), FromRow backend l a, (k :+ l) ~ i)
   => FromRow backend i (Entity a) where
   fromRow = Entity `pmap` fromRow `papply` fromRow
@@ -115,7 +118,8 @@ getMany ids = select_ $ EntityID `inList` ids
 getMaybe :: ( MonadSelect backend m, Storable backend k l a
             , FromRow backend (k :+ l) (Entity a), ToRow backend k (EntityID a)
             ) => EntityID a -> m (Maybe a)
-getMaybe i = (fmap entityVal . listToMaybe) <$> select (EntityID ==. i) (limit 1)
+getMaybe i =
+  (fmap entityVal . listToMaybe) <$> select (EntityID ==. i) (limit 1)
 
 get :: ( MonadSelect backend m, Storable backend k l a
        , FromRow backend (k :+ l) (Entity a), ToRow backend k (EntityID a) )

@@ -1,0 +1,39 @@
+name:                  tests
+version:               1
+license:               BSD3
+license-file:          LICENSE
+author:                Thomas Feron
+maintainer:            thomas.feron@redspline.com
+build-type:            Simple
+cabal-version:         >=1.10
+
+-- Empty library
+library
+  ghc-options:         -Wall
+  hs-source-dirs:      .
+  default-language:    Haskell2010
+
+test-suite unit-tests
+  type:                exitcode-stdio-1.0
+  ghc-options:         -Wall
+  hs-source-dirs:      .
+  default-language:    Haskell2010
+  main-is:             Suite.hs
+
+  default-extensions:  TypeSynonymInstances
+                       FlexibleInstances
+                       MultiParamTypeClasses
+                       TypeFamilies
+                       DeriveGeneric
+                       OverloadedStrings
+                       GADTs
+                       LambdaCase
+
+  other-modules:       Database.Seakale.StorableSpec
+                       SpecHelpers
+
+  build-depends:       base
+                     , seakale
+                     , seakale-tests
+                     , seakale-postgresql
+                     , hspec

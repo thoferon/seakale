@@ -8,16 +8,49 @@ import qualified Data.ByteString.Lazy as BSL
 
 import           Database.Seakale.Types hiding (runQuery, runExecute)
 
+data QueryPredicate
+  = QPredPlain BSL.ByteString
+  | QPredFunction (BSL.ByteString -> Bool)
+
+runQueryPredicate :: QueryPredicate -> BSL.ByteString -> Bool
+runQueryPredicate p req = case p of
+  QPredPlain req' -> req == req'
+  QPredFunction f -> f req
+
+instance Show QueryPredicate where
+  show = \case
+    QPredPlain bsl  -> show bsl
+    QPredFunction _ -> "predicate"
+
+instance Eq QueryPredicate where
+  (==) qp1 qp2 = case (qp1, qp2) of
+    (QPredPlain q1, QPredPlain q2)     -> q1 == q2
+    (QPredPlain q, QPredFunction f)    -> f q
+    (QPredFunction f, QPredPlain q)    -> f q
+    (QPredFunction _, QPredFunction _) -> False
+
 data Mock backend a
-  = MockQuery   (BSL.ByteString -> Bool) ([ColumnInfo backend], [Row backend])
-  | MockExecute (BSL.ByteString -> Bool) Integer
+  = MockQuery   QueryPredicate ([ColumnInfo backend], [Row backend])
+  | MockExecute QueryPredicate Integer
   | Or (Mock backend a) (Mock backend a)
   | And (Mock backend a) (Mock backend a)
   | After (Mock backend a) (Mock backend a)
   | None (Maybe a)
 
+deriving instance (Show a, Show (ColumnInfo backend)) => Show (Mock backend a)
+deriving instance (Eq   a, Eq   (ColumnInfo backend)) => Eq   (Mock backend a)
+
+mockConsumed :: Mock backend a -> Bool
+mockConsumed = \case
+  None _ -> True
+  _ -> False
+
 notMonadError :: a
 notMonadError = error "Mock not intended as an actual monad"
+
+instance Monoid (Mock backend a) where
+  mempty = None Nothing
+  mappend = And
 
 instance Functor (Mock backend) where
   fmap f = \case
@@ -43,8 +76,8 @@ instance Alternative (Mock backend) where
   mx <|> my = Or mx my
 
 data MockF backend f
-  = FMockQuery   (BSL.ByteString -> Bool) ([ColumnInfo backend], [Row backend])
-  | FMockExecute (BSL.ByteString -> Bool) Integer
+  = FMockQuery   QueryPredicate ([ColumnInfo backend], [Row backend])
+  | FMockExecute QueryPredicate Integer
   | FOr f f
   | FAnd f f
   | FAfter f f
@@ -76,18 +109,18 @@ castMock = cata cast
 
 mockMatchingQuery :: (BSL.ByteString -> Bool)
                   -> ([ColumnInfo backend], [Row backend])
-                  -> Mock backend a
-mockMatchingQuery = MockQuery
+                  -> Mock backend ()
+mockMatchingQuery f dat = MockQuery (QPredFunction f) dat
 
-mockMatchingExecute :: (BSL.ByteString -> Bool) -> Integer -> Mock backend a
-mockMatchingExecute = MockExecute
+mockMatchingExecute :: (BSL.ByteString -> Bool) -> Integer -> Mock backend ()
+mockMatchingExecute f i = MockExecute (QPredFunction f) i
 
 mockQuery :: BSL.ByteString -> ([ColumnInfo backend], [Row backend])
-          -> Mock backend a
-mockQuery req dat = MockQuery (==req) dat
+          -> Mock backend ()
+mockQuery req dat = MockQuery (QPredPlain req) dat
 
-mockExecute :: BSL.ByteString -> Integer -> Mock backend a
-mockExecute req i = MockExecute (==req) i
+mockExecute :: BSL.ByteString -> Integer -> Mock backend ()
+mockExecute req i = MockExecute (QPredPlain req) i
 
 mor :: Mock backend a -> Mock backend a -> Mock backend a
 mor = Or

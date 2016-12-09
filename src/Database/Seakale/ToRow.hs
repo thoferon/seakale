@@ -136,13 +136,13 @@ instance GToRow backend con n a => GToRow backend con n (M1 S c a) where
 instance ToRow backend Zero ()
 
 formatString :: BS.ByteString -> BS.ByteString
-formatString str = "'" <> escapeQuotes str <> "'"
+formatString str = "'" <> escapeQuotes "" str <> "'"
   where
-    escapeQuotes :: BS.ByteString -> BS.ByteString
-    escapeQuotes "" = ""
-    escapeQuotes s =
+    escapeQuotes :: BS.ByteString -> BS.ByteString -> BS.ByteString
+    escapeQuotes _ "" = ""
+    escapeQuotes prefix s =
       let (start, end) = fmap (BS.drop 1) $ BS.break (=='\'') s
-      in start <> "''" <> escapeQuotes end
+      in prefix <> start <> escapeQuotes "''" end
 
 instance ToRow backend One String where
   toRow _ s = [formatString $ BS.pack s]

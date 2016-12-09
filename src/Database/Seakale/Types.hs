@@ -83,7 +83,9 @@ formatMany (RepeatQuery before between after) beforeData afterData dat =
   <> mconcat (map (formatQuery between) dat)
   <> formatQuery after afterData
 
-newtype Field backend = Field { fieldValue :: Maybe BS.ByteString }
+newtype Field backend
+  = Field { fieldValue :: Maybe BS.ByteString }
+  deriving (Show, Eq)
 
 type Row backend = [Field backend]
 
@@ -100,6 +102,9 @@ data ColumnInfo backend = ColumnInfo
   { colInfoName :: Maybe BS.ByteString
   , colInfoType :: ColumnType backend
   }
+
+deriving instance Show (ColumnType backend) => Show (ColumnInfo backend)
+deriving instance Eq   (ColumnType backend) => Eq   (ColumnInfo backend)
 
 type QueryData n = Vector n BS.ByteString
 

@@ -48,7 +48,7 @@ runQuery req = para (phi f)
   where
     f :: MockF backend a
       -> Maybe (([ColumnInfo backend], [Row backend]), Mock backend b)
-    f (FMockQuery p cr) | p req = Just (cr, None Nothing)
+    f (FMockQuery p cr) | runQueryPredicate p req = Just (cr, None Nothing)
     f _ = Nothing
 
 runExecute :: BSL.ByteString -> Mock backend a
@@ -56,7 +56,7 @@ runExecute :: BSL.ByteString -> Mock backend a
 runExecute req = para (phi f)
   where
     f :: MockF backend a -> Maybe (Integer, Mock backend b)
-    f (FMockExecute p i) | p req = Just (i, None Nothing)
+    f (FMockExecute p i) | runQueryPredicate p req = Just (i, None Nothing)
     f _ = Nothing
 
 runRequestT :: Monad m => backend -> Mock backend b

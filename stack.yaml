@@ -4,6 +4,7 @@ packages:
 - 'seakale-postgresql'
 - 'seakale-tests'
 - 'demo'
+- 'tests'
 extra-deps:
 - recursion-schemes-5
 flags: {}

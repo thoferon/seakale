@@ -35,6 +35,7 @@ library
                        UndecidableInstances
                        GeneralizedNewtypeDeriving
                        ScopedTypeVariables
+                       StandaloneDeriving
 
   exposed-modules:     Database.Seakale.FromRow
                        Database.Seakale.Request
