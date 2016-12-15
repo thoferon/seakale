@@ -10,6 +10,11 @@ build-type:            Simple
 extra-source-files:    ChangeLog.md
 cabal-version:         >=1.10
 
+source-repository head
+  type:                darcs
+  location:            http://darcs.redspline.com/seakale
+  tag:                 0.9.0
+
 library
   ghc-options:         -Wall
   hs-source-dirs:      src
