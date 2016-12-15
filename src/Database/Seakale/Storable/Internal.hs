@@ -81,9 +81,6 @@ buildCondition' op vec1 vec2 =
           $ zip (vectorToList (vec1 backend)) (vectorToList (vec2 backend))
     in (Plain q EmptyQuery, Nil)
 
-unsafeCastCondition :: Condition backend a -> Condition backend b
-unsafeCastCondition (Condition f) = Condition f
-
 data SelectClauses backend a = SelectClauses
   { selectGroupBy :: backend -> [Column]
   , selectOrderBy :: backend -> (Bool, [Column])
@@ -108,9 +105,6 @@ instance Monoid (SelectClauses backend a) where
     , selectLimit  = maybe (selectLimit sc1) Just (selectLimit sc2)
     , selectOffset = maybe (selectOffset sc1) Just (selectOffset sc2)
     }
-
-unsafeCastSelectClauses :: SelectClauses backend a -> SelectClauses backend b
-unsafeCastSelectClauses SelectClauses{..} = SelectClauses{..}
 
 buildWhereClause :: Condition backend a -> BS.ByteString -> backend
                  -> BSL.ByteString

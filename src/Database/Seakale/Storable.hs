@@ -1,7 +1,24 @@
+-- | This module provides functions and types to work on values instantiating
+-- 'Storable'. Such values have an associated type for their ID and an
+-- associated relation (table name, columns for the ID and columns for the
+-- value.)
+--
+-- The type classes 'MonadSelect' and 'MonadStore' and provided so that code can
+-- be written with types such as @MonadSelect m => Int -> m String@ ensuring
+-- that the function is read-only. In 'MonadStore', all four operations
+-- (@SELECT@, @INSERT@, @UPDATE@ and @DELETE#) can be done.
+--
+-- In order to be able to use a type with these functions, it should be made an
+-- instance of 'Storable' as well as possibly an instance of 'FromRow'/'ToRow'
+-- depending on what functions are called. It is also a good idea to define a
+-- type specifying the properties (fields) on which we can define conditions.
+-- See the demo for an example.
+
 module Database.Seakale.Storable
   ( Entity(..)
-  , Storable(..)
   , MonadSelect
+  , MonadStore
+  -- * Operations
   , select
   , select_
   , getMany
@@ -11,20 +28,27 @@ module Database.Seakale.Storable
   , create
   , updateMany
   , update
+  , UpdateSetter
+  , (=.)
   , deleteMany
   , delete
+  -- * Setup
+  , Storable(..)
   , Relation(..)
   , RelationName(..)
   , Column(..)
+  -- * Properties
   , Property(..)
+  , EntityIDProperty(..)
+  -- * SELECT clauses
   , SelectClauses
   , groupBy
   , asc
   , desc
   , limit
   , offset
+  -- * Conditions
   , Condition
-  , EntityIDProperty(..)
   , (==.)
   , (/=.)
   , (<=.)
@@ -49,8 +73,6 @@ module Database.Seakale.Storable
   , isNotNull
   , inList
   , notInList
-  , UpdateSetter
-  , (=.)
   ) where
 
 import           Control.Monad
@@ -68,6 +90,7 @@ import           Database.Seakale.Storable.Internal
                    hiding (select, insert, update, delete)
 import qualified Database.Seakale.Storable.Internal as I
 
+-- | A value together with its identifier.
 data Entity a = Entity
   { entityID  :: EntityID a
   , entityVal :: a
@@ -84,6 +107,7 @@ instance (ToRow backend k (EntityID a), ToRow backend l a, (k :+ l) ~ i)
   => ToRow backend i (Entity a) where
   toRow backend (Entity i v) = toRow backend i `vappend` toRow backend v
 
+-- | Select all entities for the corresponding relation.
 select :: ( MonadSelect backend m, Storable backend k l a
           , FromRow backend (k :+ l) (Entity a) ) => Condition backend a
        -> SelectClauses backend a -> m [Entity a]
@@ -94,38 +118,34 @@ select cond clauses = do
     Left err -> throwSeakaleError $ RowParseError err
     Right xs -> return xs
 
+-- | Like 'select' but without any other clauses than @WHERE@.
 select_ :: ( MonadSelect backend m, Storable backend k l a
           , FromRow backend (k :+ l) (Entity a) ) => Condition backend a
         -> m [Entity a]
 select_ cond = select cond mempty
 
-data EntityIDProperty a backend :: Nat -> * -> * where
-  EntityID :: forall backend k l a. Storable backend k l a
-           => EntityIDProperty a backend k (EntityID a)
-
-instance Property backend a (EntityIDProperty a) where
-  toColumns backend x@EntityID = go (relation backend) x
-    where
-      go :: Relation backend k l a -> EntityIDProperty a backend k (EntityID a)
-         -> Vector k Column
-      go Relation{..} _ = relationIDColumns
-
+-- | Select all entities with the given IDs.
 getMany :: ( MonadSelect backend m, Storable backend k l a
            , FromRow backend (k :+ l) (Entity a), ToRow backend k (EntityID a) )
         => [EntityID a] -> m [Entity a]
 getMany ids = select_ $ EntityID `inList` ids
 
+-- | Return the value corresponding to the given ID if it exists, otherwise
+-- return @Nothing@.
 getMaybe :: ( MonadSelect backend m, Storable backend k l a
             , FromRow backend (k :+ l) (Entity a), ToRow backend k (EntityID a)
             ) => EntityID a -> m (Maybe a)
 getMaybe i =
   (fmap entityVal . listToMaybe) <$> select (EntityID ==. i) (limit 1)
 
+-- | Return the value corresponding to the given ID if it exists, otherwise
+-- throw 'EntityNotFoundError'.
 get :: ( MonadSelect backend m, Storable backend k l a
        , FromRow backend (k :+ l) (Entity a), ToRow backend k (EntityID a) )
     => EntityID a -> m a
 get i = maybe (throwSeakaleError EntityNotFoundError) return =<< getMaybe i
 
+-- | Insert the given values and return their ID in the same order.
 createMany :: forall backend m k l a.
               ( MonadStore backend m, Storable backend k l a, ToRow backend l a
               , FromRow backend k (EntityID a) ) => [a] -> m [EntityID a]
@@ -138,10 +158,13 @@ createMany values = do
     Left err -> throwSeakaleError $ RowParseError err
     Right xs -> return xs
 
+-- | Like 'createMany' but for only one value.
 create :: ( MonadStore backend m, Storable backend k l a, ToRow backend l a
           , FromRow backend k (EntityID a) ) => a -> m (EntityID a)
 create = fmap head . createMany . pure
 
+-- | Update columns on rows matching the given conditions and return the number
+-- of rows affected.
 updateMany :: forall backend m k l a.
               (MonadStore backend m, Storable backend k l a)
            => UpdateSetter backend a -> Condition backend a -> m Integer
@@ -150,11 +173,13 @@ updateMany setter cond = do
   let rel = relation backend :: Relation backend k l a
   I.update rel setter cond
 
+-- | Update columns on the row with the given ID.
 update :: ( MonadStore backend m, Storable backend k l a
           , ToRow backend k (EntityID a) )
        => EntityID a -> UpdateSetter backend a -> m ()
 update i setter = void $ updateMany setter $ EntityID ==. i
 
+-- | Delete rows matching the given conditions.
 deleteMany :: forall backend m k l a.
               (MonadStore backend m, Storable backend k l a)
            => Condition backend a -> m Integer
@@ -163,12 +188,45 @@ deleteMany cond = do
   let rel = relation backend :: Relation backend k l a
   I.delete rel cond
 
+-- | Delete the row with the given ID.
 delete :: ( MonadStore backend m, Storable backend k l a
           , ToRow backend k (EntityID a) ) => EntityID a -> m ()
 delete i = void $ deleteMany $ EntityID ==. i
 
+-- | Specify that the type @f@ specify properties of @a@. These values of type
+-- @f@ can then be used to create 'Condition's on type @a@. The type parameters
+-- 'n' and 'b' in the class definition are, respectively, the number of rows
+-- taken by this property and the associated type.
+--
+-- See the following example:
+--
+-- > data User = User
+-- >   { userFirstName :: String
+-- >   , userLastName  :: String
+-- >   }
+-- >
+-- > data UserProperty b n a where
+-- >   UserFirstName :: UserProperty b One String
+-- >   UserLastName  :: UserProperty b One String
+-- >
+-- > UserFirstName ==. "Marie" &&. UserLastName ==. "Curie"
+-- >   :: Condition backend User
 class Property backend a f | f -> a where
   toColumns :: backend -> f backend n b -> Vector n Column
+
+-- | Property of any value instantiating 'Storable' and selecting its ID.
+-- This can be used to easily create 'Condition's on any type such as
+-- @EntityID ==. UserID 42@.
+data EntityIDProperty a backend :: Nat -> * -> * where
+  EntityID :: forall backend k l a. Storable backend k l a
+           => EntityIDProperty a backend k (EntityID a)
+
+instance Property backend a (EntityIDProperty a) where
+  toColumns backend x@EntityID = go (relation backend) x
+    where
+      go :: Relation backend k l a -> EntityIDProperty a backend k (EntityID a)
+         -> Vector k Column
+      go Relation{..} _ = relationIDColumns
 
 (==.) :: (Property backend a f, ToRow backend n b) => f backend n b -> b
       -> Condition backend a

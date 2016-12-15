@@ -1,3 +1,11 @@
+-- | This module allows to make @SELECT@ queries on several tables with
+-- @LEFT JOIN@, @RIGHT JOIN@, @INNER JOIN@ and @FULL JOIN@. Note that they can
+-- be nested.
+--
+-- To be able to create 'Conditon's and 'SelectClause's, 'JLeft' and 'JRight'
+-- are provided to lift properties of a storable value into properties of a
+-- join.
+
 module Database.Seakale.Storable.Join
   ( JoinLeftProperty(..)
   , JoinRightProperty(..)
@@ -117,6 +125,7 @@ type JoinRelation backend k l a
                , RowParser backend k (EntityID a)
                , RowParser backend l a )
 
+-- | Send a @SELECT@ query on a @JOIN@.
 selectJoin :: MonadSelect backend m
            => JoinRelation backend k l (f a b)
            -> Condition backend (f a b) -> SelectClauses backend (f a b)

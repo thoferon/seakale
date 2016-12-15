@@ -20,14 +20,8 @@ import qualified Data.Text.Lazy        as TL
 
 import           Database.Seakale.Types
 
--- Previous attempts to define it the "normal" way (and making it a Monad, ...)
--- failed because GHC doesn't know that the type-level sum is associative
--- resulting in errors such as:
---
--- Could not deduce ((k :+ (l :+ m)) ~ (i :+ m))
--- from the context (GFromRow backend k a,
---                   GFromRow backend l b,
---                   (k :+ l) ~ i)
+-- | A pseudo-monad in which parsing of rows is done. Because it is counting the
+-- number of fields consumed, it can't be made an instance of Monad.
 data RowParser backend :: Nat -> * -> * where
   GetBackend :: RowParser backend Zero backend
   Consume    :: RowParser backend One (ColumnInfo backend, Field backend)
@@ -38,6 +32,8 @@ data RowParser backend :: Nat -> * -> * where
              -> RowParser backend n a
   Fail       :: String -> RowParser backend n a
 
+-- | For consistency with the following functions, 'pmap' is given in addition
+-- to 'fmap'.
 pmap :: (a -> b) -> RowParser backend n a -> RowParser backend n b
 pmap f = \case
   GetBackend    -> Bind GetBackend $ \x -> Pure $ f x
@@ -50,30 +46,38 @@ pmap f = \case
 instance Functor (RowParser backend n) where
   fmap = pmap
 
+-- | Equivalent of 'pure' and 'return'.
 ppure, preturn :: a -> RowParser backend Zero a
 ppure = Pure
 preturn = ppure
 
+-- | Equivalent of '(<*>)'
 papply :: RowParser backend n (a -> b) -> RowParser backend m a
        -> RowParser backend (n :+ m) b
 papply pf px = Bind pf $ \f -> pmap (\x -> f x) px
 
+-- | Equivalent of '(>>=)'.
 pbind :: RowParser backend n a -> (a -> RowParser backend m b)
       -> RowParser backend (n :+ m) b
 pbind = Bind
 
+-- | Equivalent of 'fail' from 'Monad'.
 pfail :: String -> RowParser backend n a
 pfail = Fail
 
+-- | Equivalent of 'empty' from 'Alternative'.
 pempty :: RowParser backend n a
 pempty = pfail "pempty"
 
+-- | Equivalent of '(<|>)' from 'Alternative'.
 por :: RowParser backend n a -> RowParser backend n a -> RowParser backend n a
 por = Or
 
+-- | Return the underlying SQL backend.
 pbackend :: RowParser backend Zero backend
 pbackend = GetBackend
 
+-- | Return the next column.
 pconsume :: RowParser backend One (ColumnInfo backend, Field backend)
 pconsume = Consume
 
@@ -183,6 +187,7 @@ instance SkipColumns backend Zero where
 instance (SkipColumns backend n, 'S n ~ m) => SkipColumns backend m where
   skipColumns = pconsume `pbind` \_ -> skipColumns
 
+-- | Try to parse rows given a row parser and the SQL backend.
 parseRows :: RowParser backend n a -> backend -> [ColumnInfo backend]
           -> [Row backend] -> Either String [a]
 parseRows parser backend cols = mapM (parseRow parser backend cols)
