@@ -30,6 +30,7 @@ test-suite unit-tests
                        LambdaCase
 
   other-modules:       Database.Seakale.StorableSpec
+                       Database.Seakale.Storable.JoinSpec
                        SpecHelpers
 
   build-depends:       base

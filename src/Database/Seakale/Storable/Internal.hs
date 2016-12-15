@@ -36,7 +36,7 @@ instance IsString Column where
 
 class Storable backend (k :: Nat) (l :: Nat) a | a -> k, a -> l where
   data EntityID a :: *
-  relation :: Relation backend k l a
+  relation :: backend -> Relation backend k l a
 
 data Condition backend a
   = forall n. Condition (BS.ByteString -> backend -> (Query n, QueryData n))
@@ -58,52 +58,55 @@ combineConditions op (Condition f) (Condition g) =
                    `qappend` Plain (" " <> op <> " ") (parenthesiseQuery q2)
     in (q, qdat1 `vappend` qdat2)
 
-buildCondition :: BS.ByteString -> Vector n Column
+buildCondition :: BS.ByteString -> (backend -> Vector n Column)
                -> (backend -> QueryData n) -> Condition backend a
 buildCondition op vec dat =
     Condition $ \prefix backend ->
-      (go id (fmap (($ prefix) . unColumn) vec), dat backend)
+      (go id (fmap (($ prefix) . unColumn) (vec backend)), dat backend)
   where
     go :: (forall m. Query m -> Query m) -> Vector n BS.ByteString -> Query n
     go _ Nil = EmptyQuery
     go f (Cons x xs) =
       f $ Plain (x <> " " <> op <> " ") $ Hole $ go (Plain " AND ") xs
 
-buildCondition' :: BS.ByteString -> Vector n Column -> Vector n Column
+buildCondition' :: BS.ByteString
+                -> (backend -> Vector n Column) -> (backend -> Vector n Column)
                 -> Condition backend a
 buildCondition' op vec1 vec2 =
-  Condition $ \prefix _ ->
+  Condition $ \prefix backend ->
     let q = mconcat . intersperse " AND "
           . map (\(col1, col2) -> unColumn col1 prefix
                                   <> " " <> op <> " "
                                   <> unColumn col2 prefix)
-          $ zip (vectorToList vec1) (vectorToList vec2)
+          $ zip (vectorToList (vec1 backend)) (vectorToList (vec2 backend))
     in (Plain q EmptyQuery, Nil)
 
 unsafeCastCondition :: Condition backend a -> Condition backend b
 unsafeCastCondition (Condition f) = Condition f
 
 data SelectClauses backend a = SelectClauses
-  { selectGroupBy :: [Column]
-  , selectOrderBy :: (Bool, [Column])
+  { selectGroupBy :: backend -> [Column]
+  , selectOrderBy :: backend -> (Bool, [Column])
   , selectLimit   :: Maybe Int
   , selectOffset  :: Maybe Int
   }
 
 instance Monoid (SelectClauses backend a) where
   mempty = SelectClauses
-    { selectGroupBy = []
-    , selectOrderBy = (False, [])
+    { selectGroupBy = const []
+    , selectOrderBy = const (False, [])
     , selectLimit   = Nothing
     , selectOffset  = Nothing
     }
   mappend sc1 sc2 = SelectClauses
-    { selectGroupBy = selectGroupBy sc1 ++ selectGroupBy sc2
-    , selectOrderBy = let (desc1, cols1) = selectOrderBy sc1
-                          (desc2, cols2) = selectOrderBy sc2
-                      in (desc1 || desc2, cols1 ++ cols2)
-    , selectLimit   = maybe (selectLimit sc1) Just (selectLimit sc2)
-    , selectOffset  = maybe (selectOffset sc1) Just (selectOffset sc2)
+    { selectGroupBy = \backend ->
+        selectGroupBy sc1 backend ++ selectGroupBy sc2 backend
+    , selectOrderBy = \backend ->
+        let (desc1, cols1) = selectOrderBy sc1 backend
+            (desc2, cols2) = selectOrderBy sc2 backend
+        in (desc1 || desc2, cols1 ++ cols2)
+    , selectLimit  = maybe (selectLimit sc1) Just (selectLimit sc2)
+    , selectOffset = maybe (selectOffset sc1) Just (selectOffset sc2)
     }
 
 unsafeCastSelectClauses :: SelectClauses backend a -> SelectClauses backend b
@@ -119,7 +122,7 @@ buildOnClause :: Condition backend a -> BS.ByteString -> backend
               -> BSL.ByteString
 buildOnClause (Condition f) prefix backend =
   let cond_ = uncurry formatQuery $ f prefix backend
-  in if BSL.null cond_ then "" else " ON " <> cond_
+  in if BSL.null cond_ then " ON 1=1" else " ON " <> cond_
 
 buildColumnList :: [Column] -> BSL.ByteString
 buildColumnList = BSL.fromChunks . intersperse ", " . map (($ "") . unColumn)
@@ -127,12 +130,12 @@ buildColumnList = BSL.fromChunks . intersperse ", " . map (($ "") . unColumn)
 buildRelationName :: RelationName -> BSL.ByteString
 buildRelationName relName = BSL.fromStrict $ unRelationName relName ""
 
-buildSelectClauses :: SelectClauses backend a -> BSL.ByteString
-buildSelectClauses SelectClauses{..} = mconcat
-  [ if null selectGroupBy
+buildSelectClauses :: SelectClauses backend a -> backend -> BSL.ByteString
+buildSelectClauses SelectClauses{..} backend = mconcat
+  [ if null (selectGroupBy backend)
       then ""
-      else " GROUP BY " <> buildColumnList selectGroupBy
-  , let (descFlag, cols) = selectOrderBy
+      else " GROUP BY " <> buildColumnList (selectGroupBy backend)
+  , let (descFlag, cols) = selectOrderBy backend
     in if null cols
          then ""
          else " ORDER BY "
@@ -148,7 +151,8 @@ buildSelectRequest backend Relation{..} cond clauses =
   "SELECT " <> buildColumnList (vectorToList relationIDColumns) <> ", "
             <> buildColumnList (vectorToList relationColumns)
             <> " FROM " <> buildRelationName relationName
-            <> buildWhereClause cond "" backend <> buildSelectClauses clauses
+            <> buildWhereClause cond "" backend
+            <> buildSelectClauses clauses backend
 
 data SelectF backend a
   = forall k l b. Select (Relation backend k l b) (Condition backend b)
@@ -199,13 +203,12 @@ runSelectT = iterTM interpreter
       SelectGetBackend f   -> getBackend >>= f
 
 data UpdateSetter backend a
-  = forall n. UpdateSetter (Vector n Column) (backend -> QueryData n)
+  = forall n. UpdateSetter (backend -> Vector n (Column, BS.ByteString))
 
 instance Monoid (UpdateSetter backend a) where
-  mempty = UpdateSetter Nil (const Nil)
-  mappend (UpdateSetter cols1 dat1) (UpdateSetter cols2 dat2) =
-    UpdateSetter (cols1 `vappend` cols2)
-                 (\backend -> dat1 backend `vappend` dat2 backend)
+  mempty = UpdateSetter $ const Nil
+  mappend (UpdateSetter f) (UpdateSetter g) =
+    UpdateSetter $ \backend -> f backend `vappend` g backend
 
 data StoreF backend a
   = forall k l b. Insert (Relation backend k l b) [QueryData l]
@@ -274,8 +277,8 @@ buildInsertRequest Relation{..} dat =
       Cons _ xs -> Plain prefix $ Hole $ buildBetween ", " suffix xs
 
 buildSetter :: backend -> UpdateSetter backend a -> BSL.ByteString
-buildSetter backend (UpdateSetter cols values) =
-  let pairs = zip (vectorToList cols) (vectorToList (values backend))
+buildSetter backend (UpdateSetter f) =
+  let pairs = vectorToList $ f backend
   in BSL.fromChunks $ intersperse ", " $
        map (\(col, value) -> unColumn col "" <> " = " <> value) pairs
 

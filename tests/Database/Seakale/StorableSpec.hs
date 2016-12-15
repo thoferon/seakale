@@ -10,7 +10,7 @@ spec = do
   describe "select" $ do
     it "selects all rows if no filters are given" $ do
       let mock = mockQuery "SELECT id, email, password FROM users"
-                           (userCols, [user42Row, user99Row])
+                           (userEntCols, [user42EntRow, user99EntRow])
           (ents, mock') = run' mock $ select mempty mempty
 
       mock' `shouldSatisfy` mockConsumed
@@ -20,7 +20,7 @@ spec = do
       let mock = mockQuery "SELECT id, email, password FROM users\
                            \ WHERE password = 'secret'\
                            \ ORDER BY email DESC"
-                           (userCols, [user99Row, user42Row])
+                           (userEntCols, [user99EntRow, user42EntRow])
           (ents, mock') = run' mock $
             select (UserPassword ==. "secret") (desc UserEmail)
 
@@ -31,7 +31,7 @@ spec = do
     it "selects all entities with the given IDs" $ do
       let mock = mockQuery "SELECT id, email, password FROM users\
                            \ WHERE (id) IN ((42), (99))"
-                           (userCols, [user42Row, user99Row])
+                           (userEntCols, [user42EntRow, user99EntRow])
           (ents, mock') = run' mock $ getMany [UserID 42, UserID 99]
 
       mock' `shouldSatisfy` mockConsumed
@@ -41,7 +41,7 @@ spec = do
     it "selects the value with the given ID" $ do
       let mock = mockQuery "SELECT id, email, password FROM users\
                            \ WHERE id = 42 LIMIT 1"
-                           (userCols, [user42Row])
+                           (userEntCols, [user42EntRow])
           (ents, mock') = run' mock $ getMaybe $ UserID 42
 
       mock' `shouldSatisfy` mockConsumed
@@ -59,7 +59,7 @@ spec = do
     it "selects the value with the given ID" $ do
       let mock = mockQuery "SELECT id, email, password FROM users\
                            \ WHERE id = 42 LIMIT 1"
-                           (userCols, [user42Row])
+                           (userEntCols, [user42EntRow])
           (ents, mock') = run' mock $ get $ UserID 42
 
       mock' `shouldSatisfy` mockConsumed
@@ -67,7 +67,7 @@ spec = do
 
     it "throws EntityNotFoundError if it does not exist" $ do
       let mock = mockQuery "SELECT id, email, password FROM users\
-                           \ WHERE id = 43 LIMIT 1" (userCols, [])
+                           \ WHERE id = 43 LIMIT 1" (userEntCols, [])
           (ents, mock') = run' mock $ get $ UserID 43
 
       mock' `shouldSatisfy` mockConsumed
@@ -78,8 +78,7 @@ spec = do
       let mock = mockQuery "INSERT INTO users (email, password) VALUES\
                            \ ('user42@host', 'secret')\
                            \ ('user99@host', 'secret') RETURNING id"
-                           ([idCol], [ [Field (Just "42")]
-                                     , [Field (Just "99")] ])
+                           (userIDCols, [user42IDRow, user99IDRow])
           (ents, mock') = run' mock $ createMany [user42, user99]
 
       mock' `shouldSatisfy` mockConsumed

@@ -135,6 +135,11 @@ vappend :: Vector n a -> Vector m a -> Vector (n :+ m) a
 vappend Nil xs = xs
 vappend (Cons x xs) ys = Cons x (vappend xs ys)
 
+vzip :: Vector n a -> Vector n b -> Vector n (a, b)
+vzip = curry $ \case
+  (Cons x xs, Cons y ys) -> Cons (x, y) (vzip xs ys)
+  (Nil, Nil) -> Nil
+
 vectorToList :: Vector n a -> [a]
 vectorToList = \case
   Nil -> []

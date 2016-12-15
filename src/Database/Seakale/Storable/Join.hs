@@ -1,7 +1,7 @@
 module Database.Seakale.Storable.Join
-  ( Join
-  , JoinLeftProperty(..)
+  ( JoinLeftProperty(..)
   , JoinRightProperty(..)
+  , EntityID(..)
   , LeftJoin(..)
   , RightJoin(..)
   , InnerJoin(..)
@@ -28,151 +28,206 @@ import           Database.Seakale.Storable
 import           Database.Seakale.Types
 import qualified Database.Seakale.Storable.Internal as I
 
-data Join a b
-
-data JoinLeftProperty  f b backend (n :: Nat) c = JLeft  (f backend n c)
-data JoinRightProperty f a backend (n :: Nat) c = JRight (f backend n c)
+data JoinLeftProperty (j :: * -> * -> *) f b backend (n :: Nat) c
+  = JLeft (f backend n c)
+data JoinRightProperty (j :: * -> * -> *) f a backend (n :: Nat) c
+  = JRight (f backend n c)
 
 instance Property backend a f
-  => Property backend (Join a b) (JoinLeftProperty f b) where
-  toColumns (JLeft prop) =
-    fmap (\col -> Column $ unColumn col . (<> "l")) (toColumns prop)
+  => Property backend (j a b) (JoinLeftProperty j f b) where
+  toColumns backend (JLeft prop) =
+    fmap (\col -> Column $ unColumn col . (<> "l")) (toColumns backend prop)
 
 instance Property backend b f
-  => Property backend (Join a b) (JoinRightProperty f a) where
-  toColumns (JRight prop) =
-    fmap (\col -> Column $ unColumn col . (<> "r")) (toColumns prop)
+  => Property backend (j a b) (JoinRightProperty j f a) where
+  toColumns backend (JRight prop) =
+    fmap (\col -> Column $ unColumn col . (<> "r")) (toColumns backend prop)
 
-class IsJoin f where
-  castCondition :: Condition backend (Join a b) -> Condition backend (f a b)
-  castCondition = I.unsafeCastCondition
+data LeftJoin a b = LeftJoin a (Maybe b) deriving (Show, Eq)
 
-  castSelectClauses :: SelectClauses backend (Join a b)
-                    -> SelectClauses backend (f a b)
-  castSelectClauses = I.unsafeCastSelectClauses
-
-data LeftJoin a b = LeftJoin (Entity a) (Maybe (Entity b))
-
-instance IsJoin LeftJoin
-
-instance ( FromRow backend k (EntityID a), FromRow backend l a
-         , FromRow backend i (Maybe (EntityID b)), FromRow backend j (Maybe b)
-         , (k :+ i :+ l :+ j) ~ n )
-  => FromRow backend n (LeftJoin a b) where
-  fromRow = (\li mri lv mrv -> LeftJoin (Entity li lv) (Entity <$> mri <*> mrv))
-              `pmap` fromRow `papply` fromRow `papply` fromRow `papply` fromRow
-
-data RightJoin a b = RightJoin (Maybe (Entity a)) (Entity b)
-
-instance IsJoin RightJoin
-
-instance ( FromRow backend k (Maybe (EntityID a)), FromRow backend l (Maybe a)
+instance ( Storable backend k l a, Storable backend i j b
+         , FromRow backend k (EntityID a), FromRow backend l a
          , FromRow backend i (EntityID b), FromRow backend j b
-         , (k :+ i :+ l :+ j) ~ n )
-  => FromRow backend n (RightJoin a b) where
-  fromRow = (\mli ri mlv rv -> RightJoin (Entity <$> mli <*> mlv)
-                                         (Entity ri rv))
-              `pmap` fromRow `papply` fromRow `papply` fromRow `papply` fromRow
+         , FromRow backend i (Vector i Null)
+         , FromRow backend j (Vector j Null)
+        , (k :+ i) ~ g, (l :+ j) ~ h )
+  => Storable backend g h (LeftJoin a b) where
+  data EntityID (LeftJoin a b) = LeftJoinID (EntityID a) (Maybe (EntityID b))
+  relation backend = let (rel, _, _) = leftJoin_ mempty backend in rel
 
-data InnerJoin a b = InnerJoin (Entity a) (Entity b)
+deriving instance (Show (EntityID a), Show (EntityID b))
+  => Show (EntityID (LeftJoin a b))
+deriving instance (Eq (EntityID a), Eq (EntityID b))
+  => Eq (EntityID (LeftJoin a b))
 
-instance IsJoin InnerJoin
+data RightJoin a b = RightJoin (Maybe a) b deriving (Show, Eq)
 
-instance ( FromRow backend k (EntityID a), FromRow backend l a
+instance ( Storable backend k l a, Storable backend i j b
+         , FromRow backend k (EntityID a), FromRow backend l a
          , FromRow backend i (EntityID b), FromRow backend j b
-         , (k :+ i :+ l :+ j) ~ n )
-  => FromRow backend n (InnerJoin a b) where
-  fromRow = (\li ri lv rv -> InnerJoin (Entity li lv) (Entity ri rv))
-              `pmap` fromRow `papply` fromRow `papply` fromRow `papply` fromRow
+         , FromRow backend k (Vector k Null)
+         , FromRow backend l (Vector l Null)
+         , (k :+ i) ~ g, (l :+ j) ~ h )
+  => Storable backend g h (RightJoin a b) where
+  data EntityID (RightJoin a b) = RightJoinID (Maybe (EntityID a)) (EntityID b)
+  relation backend = let (rel, _, _) = rightJoin_ mempty backend in rel
 
-data FullJoin a b = FullJoin (Maybe (Entity a)) (Maybe (Entity b))
+deriving instance (Show (EntityID a), Show (EntityID b))
+  => Show (EntityID (RightJoin a b))
+deriving instance (Eq (EntityID a), Eq (EntityID b))
+  => Eq (EntityID (RightJoin a b))
 
-instance IsJoin FullJoin
+data InnerJoin a b = InnerJoin a b deriving (Show, Eq)
 
-instance ( FromRow backend k (Maybe (EntityID a)), FromRow backend l (Maybe a)
-         , FromRow backend i (Maybe (EntityID b)), FromRow backend j (Maybe b)
-         , (k :+ i :+ l :+ j) ~ n )
-  => FromRow backend n (FullJoin a b) where
-  fromRow = (\mli mri mlv mrv -> FullJoin (Entity <$> mli <*> mlv)
-                                          (Entity <$> mri <*> mrv))
-              `pmap` fromRow `papply` fromRow `papply` fromRow `papply` fromRow
+instance ( Storable backend k l a, Storable backend i j b
+         , FromRow backend k (EntityID a), FromRow backend l a
+         , FromRow backend i (EntityID b), FromRow backend j b
+         , (k :+ i) ~ g, (l :+ j) ~ h )
+  => Storable backend g h (InnerJoin a b) where
+  data EntityID (InnerJoin a b) = InnerJoinID (EntityID a) (EntityID b)
+  relation backend = let (rel, _, _) = innerJoin_ mempty backend in rel
 
-selectJoin :: ( MonadSelect backend m, IsJoin f
-              , Storable backend k l a , Storable backend i j b
-              , FromRow backend ((k :+ l) :+ (i :+ j)) (f a b) )
-           => (backend -> Relation backend (k :+ i) (l :+ j) (f a b))
-           -> Condition backend (Join a b) -> SelectClauses backend (Join a b)
-           -> m [f a b]
-selectJoin rel cond clauses = do
-  let cond'    = castCondition cond
-      clauses' = castSelectClauses clauses
+deriving instance (Show (EntityID a), Show (EntityID b))
+  => Show (EntityID (InnerJoin a b))
+deriving instance (Eq (EntityID a), Eq (EntityID b))
+  => Eq (EntityID (InnerJoin a b))
+
+data FullJoin a b = FullJoin (Maybe a) (Maybe b) deriving (Show, Eq)
+
+instance ( Storable backend k l a, Storable backend i j b
+         , FromRow backend k (EntityID a), FromRow backend l a
+         , FromRow backend i (EntityID b), FromRow backend j b
+         , FromRow backend k (Vector k Null)
+         , FromRow backend l (Vector l Null)
+         , FromRow backend i (Vector i Null)
+         , FromRow backend j (Vector j Null)
+        , (k :+ i) ~ g, (l :+ j) ~ h )
+  => Storable backend g h (FullJoin a b) where
+  data EntityID (FullJoin a b)
+    = FullJoinID (Maybe (EntityID a)) (Maybe (EntityID b))
+  relation backend = let (rel, _, _) = fullJoin_ mempty backend in rel
+
+deriving instance (Show (EntityID a), Show (EntityID b))
+  => Show (EntityID (FullJoin a b))
+deriving instance (Eq (EntityID a), Eq (EntityID b))
+  => Eq (EntityID (FullJoin a b))
+
+type JoinRelation backend k l a
+  = backend -> ( Relation backend k l a
+               , RowParser backend k (EntityID a)
+               , RowParser backend l a )
+
+selectJoin :: MonadSelect backend m
+           => JoinRelation backend k l (f a b)
+           -> Condition backend (f a b) -> SelectClauses backend (f a b)
+           -> m [Entity (f a b)]
+selectJoin jrel cond clauses = do
   backend <- getBackend
-  (cols, rows) <- I.select (rel backend) cond' clauses'
-  case parseRows fromRow backend cols rows of
+  let (rel, idParser, valParser) = jrel backend
+      entParser = Entity `pmap` idParser `papply` valParser
+  (cols, rows) <- I.select rel cond clauses
+  case parseRows entParser backend cols rows of
     Left err -> throwSeakaleError $ RowParseError err
     Right xs -> return xs
 
-selectJoin_ :: ( MonadSelect backend m, IsJoin f
-               , Storable backend k l a , Storable backend i j b
-               , FromRow backend ((k :+ l) :+ (i :+ j)) (f a b) )
-            => (backend -> Relation backend (k :+ i) (l :+ j) (f a b))
-            -> Condition backend (Join a b) -> m [f a b]
+selectJoin_ :: MonadSelect backend m
+            => JoinRelation backend k l (f a b)
+            -> Condition backend (f a b) -> m [Entity (f a b)]
 selectJoin_ rel cond = selectJoin rel cond mempty
 
-leftJoin :: (backend -> Relation backend k l a)
-         -> (backend -> Relation backend i j b)
-         -> Condition backend (Join a b)
-         -> backend -> Relation backend (k :+ i) (l :+ j) (LeftJoin a b)
+leftJoin :: ( FromRow backend i (Vector i Null)
+            , FromRow backend j (Vector j Null) )
+         => JoinRelation backend k l a -> JoinRelation backend i j b
+         -> Condition backend (LeftJoin a b)
+         -> JoinRelation backend (k :+ i) (l :+ j) (LeftJoin a b)
 leftJoin = mkJoin "LEFT JOIN"
+  (\parserA parserB -> LeftJoinID `pmap` parserA `papply` maybeParser parserB)
+  (\parserA parserB -> LeftJoin   `pmap` parserA `papply` maybeParser parserB)
 
-leftJoin_ :: (Storable backend k l a, Storable backend i j b)
-          => Condition backend (Join a b)
-          -> backend -> Relation backend (k :+ i) (l :+ j) (LeftJoin a b)
+leftJoin_ :: ( Storable backend k l a, Storable backend i j b
+             , FromRow backend k (EntityID a), FromRow backend l a
+             , FromRow backend i (EntityID b), FromRow backend j b
+             , FromRow backend i (Vector i Null)
+             , FromRow backend j (Vector j Null) )
+          => Condition backend (LeftJoin a b)
+          -> JoinRelation backend (k :+ i) (l :+ j) (LeftJoin a b)
 leftJoin_ = leftJoin table table
 
-rightJoin :: (backend -> Relation backend k l a)
-          -> (backend -> Relation backend i j b)
-          -> Condition backend (Join a b)
-          -> backend -> Relation backend (k :+ i) (l :+ j) (RightJoin a b)
+rightJoin :: ( FromRow backend k (Vector k Null)
+             , FromRow backend l (Vector l Null) )
+          => JoinRelation backend k l a -> JoinRelation backend i j b
+          -> Condition backend (RightJoin a b)
+          -> JoinRelation backend (k :+ i) (l :+ j) (RightJoin a b)
 rightJoin = mkJoin "RIGHT JOIN"
+  (\parserA parserB -> RightJoinID `pmap` maybeParser parserA `papply` parserB)
+  (\parserA parserB -> RightJoin   `pmap` maybeParser parserA `papply` parserB)
 
-rightJoin_ :: (Storable backend k l a, Storable backend i j b)
-           => Condition backend (Join a b)
-           -> backend -> Relation backend (k :+ i) (l :+ j) (RightJoin a b)
+rightJoin_ :: ( Storable backend k l a, Storable backend i j b
+              , FromRow backend k (EntityID a), FromRow backend l a
+              , FromRow backend i (EntityID b), FromRow backend j b
+              , FromRow backend k (Vector k Null)
+              , FromRow backend l (Vector l Null) )
+           => Condition backend (RightJoin a b)
+           -> JoinRelation backend (k :+ i) (l :+ j) (RightJoin a b)
 rightJoin_ = rightJoin table table
 
-innerJoin :: (backend -> Relation backend k l a)
-          -> (backend -> Relation backend i j b)
-          -> Condition backend (Join a b)
-          -> backend -> Relation backend (k :+ i) (l :+ j) (InnerJoin a b)
+innerJoin :: JoinRelation backend k l a -> JoinRelation backend i j b
+          -> Condition backend (InnerJoin a b)
+          -> JoinRelation backend (k :+ i) (l :+ j) (InnerJoin a b)
 innerJoin = mkJoin "INNER JOIN"
+  (\parserA parserB -> InnerJoinID `pmap` parserA `papply` parserB)
+  (\parserA parserB -> InnerJoin   `pmap` parserA `papply` parserB)
 
-innerJoin_ :: (Storable backend k l a, Storable backend i j b)
-           => Condition backend (Join a b)
-           -> backend -> Relation backend (k :+ i) (l :+ j) (InnerJoin a b)
+innerJoin_ :: ( Storable backend k l a, Storable backend i j b
+              , FromRow backend k (EntityID a), FromRow backend l a
+              , FromRow backend i (EntityID b), FromRow backend j b )
+           => Condition backend (InnerJoin a b)
+           -> JoinRelation backend (k :+ i) (l :+ j) (InnerJoin a b)
 innerJoin_ = innerJoin table table
 
-fullJoin :: (backend -> Relation backend k l a)
-         -> (backend -> Relation backend i j b)
-         -> Condition backend (Join a b)
-         -> backend -> Relation backend (k :+ i) (l :+ j) (FullJoin a b)
+fullJoin :: ( FromRow backend k (Vector k Null)
+            , FromRow backend l (Vector l Null)
+            , FromRow backend i (Vector i Null)
+            , FromRow backend j (Vector j Null) )
+         => JoinRelation backend k l a -> JoinRelation backend i j b
+         -> Condition backend (FullJoin a b)
+         -> JoinRelation backend (k :+ i) (l :+ j) (FullJoin a b)
 fullJoin = mkJoin "FULL JOIN"
+  (\parserA parserB ->
+    FullJoinID `pmap` maybeParser parserA `papply` maybeParser parserB)
+  (\parserA parserB ->
+    FullJoin   `pmap` maybeParser parserA `papply` maybeParser parserB)
 
-fullJoin_ :: (Storable backend k l a, Storable backend i j b)
-          => Condition backend (Join a b)
-          -> backend -> Relation backend (k :+ i) (l :+ j) (FullJoin a b)
+fullJoin_ :: ( Storable backend k l a, Storable backend i j b
+             , FromRow backend k (EntityID a), FromRow backend l a
+             , FromRow backend i (EntityID b), FromRow backend j b
+             , FromRow backend k (Vector k Null)
+             , FromRow backend l (Vector l Null)
+             , FromRow backend i (Vector i Null)
+             , FromRow backend j (Vector j Null) )
+          => Condition backend (FullJoin a b)
+          -> JoinRelation backend (k :+ i) (l :+ j) (FullJoin a b)
 fullJoin_ = fullJoin table table
 
-table :: Storable backend k l a => backend -> Relation backend k l a
-table _ = relation
+table :: ( Storable backend k l a , FromRow backend k (EntityID a)
+         , FromRow backend l a) => JoinRelation backend k l a
+table backend = (relation backend, fromRow, fromRow)
 
-mkJoin :: IsJoin f => BS.ByteString -> (backend -> Relation backend k l a)
-       -> (backend -> Relation backend i j b)
-       -> Condition backend (Join a b)
-       -> backend -> Relation backend (k :+ i) (l :+ j) (f a b)
-mkJoin joinStmt relA relB cond backend =
-  combineRelations joinStmt backend (relA backend) (relB backend)
-                   (castCondition cond)
+mkJoin :: BS.ByteString
+       -> (RowParser backend k (EntityID a) -> RowParser backend i (EntityID b)
+           -> RowParser backend (k :+ i) (EntityID (f a b)))
+       -> (RowParser backend l a -> RowParser backend j b
+           -> RowParser backend (l :+ j) (f a b))
+       -> JoinRelation backend k l a -> JoinRelation backend i j b
+       -> Condition backend (f a b)
+       -> JoinRelation backend (k :+ i) (l :+ j) (f a b)
+mkJoin joinStmt f g jrelA jrelB cond backend =
+  let (relA, idParserA, valParserA) = jrelA backend
+      (relB, idParserB, valParserB) = jrelB backend
+      rel = combineRelations joinStmt backend relA relB cond
+      idParser  = f idParserA  idParserB
+      valParser = g valParserA valParserB
+  in (rel, idParser, valParser)
 
 combineRelationNames :: BS.ByteString -> backend -> RelationName -> RelationName
                      -> Condition backend a -> RelationName

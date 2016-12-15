@@ -16,7 +16,7 @@ newtype TableStats = TableStats { numRows :: Integer } deriving Generic
 instance Storable PSQL Two One TableStats where
   data EntityID TableStats = TableStatsID String String deriving Generic
 
-  relation = Relation
+  relation _ = Relation
     { relationName      = "pg_stat_user_tables"
     , relationIDColumns = ["schemaname", "relname"]
     , relationColumns   = ["n_live_tup"]

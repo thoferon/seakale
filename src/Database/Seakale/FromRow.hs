@@ -6,6 +6,7 @@ module Database.Seakale.FromRow
   , parseRows
   , parseRow
   , Null(..)
+  , maybeParser
   ) where
 
 import           GHC.Generics
@@ -261,10 +262,16 @@ instance FromRow backend One Double where
 instance FromRow backend One Float where
   fromRow = readerParser
 
+maybeParser :: forall backend k a. FromRow backend k (Vector k Null)
+            => RowParser backend k a -> RowParser backend k (Maybe a)
+maybeParser parser =
+  pmap Just parser
+  `por`
+  (pmap (\_ -> Nothing) (fromRow :: RowParser backend k (Vector k Null)))
+
 instance (FromRow backend k a, FromRow backend k (Vector k Null))
   => FromRow backend k (Maybe a) where
-  fromRow = pmap Just fromRow `por`
-    (pmap (\_ -> Nothing) (fromRow :: RowParser backend k (Vector k Null)))
+  fromRow = maybeParser fromRow
 
 instance (FromRow backend k a, FromRow backend l b, (k :+ l) ~ i)
   => FromRow backend i (a, b) where
