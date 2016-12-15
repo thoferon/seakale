@@ -1,5 +1,6 @@
 name:                  demo
 version:               1
+synopsis:              Small programs to demonstrate Seakale usage
 license:               BSD3
 license-file:          LICENSE
 author:                Thomas Feron

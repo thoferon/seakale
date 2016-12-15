@@ -1,5 +1,6 @@
 name:                  tests
 version:               1
+synopsis:              Test suite for Seakale
 license:               BSD3
 license-file:          LICENSE
 author:                Thomas Feron
