@@ -36,7 +36,7 @@ is an extension of `Select` which adds `INSERT`, `UPDATE` and `DELETE` requests.
 This is so you can mark some of your code as read-only like the following.
 Notice how `someOtherAction` can call `someReadOnlyAction`.
 
-```
+```haskell
 someReadOnlyAction :: MonadSelect backend m => m MyResult
 
 someOtherAction :: MonadStore backend m => m ()
@@ -50,7 +50,7 @@ The functions for those monads are designed to work with types instantiating
 `Storable`. These types have an associated type for their identifier and a
 corresponding relation. See this example.
 
-```
+```haskell
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE FlexibleInstances #-}
