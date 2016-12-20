@@ -52,7 +52,7 @@ runRequestT b = E.runExceptT . iterTM (interpreter b)
         eRes <- lift $ runExecute backend req
         either (E.throwError . BackendError) f eRes
       ThrowError err -> E.throwError err
-      GetBackend f -> f backend
+      GetBackend f   -> f backend
 
 runRequest :: (Backend backend, MonadBackend backend m, Monad m)
            => backend -> Request backend a -> m (Either SeakaleError a)

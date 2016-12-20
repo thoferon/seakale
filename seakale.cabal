@@ -43,7 +43,8 @@ library
                        ScopedTypeVariables
                        StandaloneDeriving
 
-  exposed-modules:     Database.Seakale.FromRow
+  exposed-modules:     Database.Seakale
+                       Database.Seakale.FromRow
                        Database.Seakale.Request
                        Database.Seakale.Request.Internal
                        Database.Seakale.Storable

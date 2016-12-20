@@ -10,7 +10,12 @@ module Database.Seakale.PostgreSQL
   , runRequestT
   , Select
   , SelectT
+  , runSelect
   , runSelectT
+  , Store
+  , StoreT
+  , runStore
+  , runStoreT
   , HasConnection(..)
   , PSQL(..)
   , SeakaleError(..)
@@ -140,6 +145,18 @@ type Select  = I.Select  PSQL
 
 runSelectT :: Monad m => SelectT m a -> RequestT m a
 runSelectT = I.runSelectT
+
+runSelect :: Select a -> Request a
+runSelect = I.runSelect
+
+type StoreT m = I.StoreT PSQL m
+type Store    = I.Store  PSQL
+
+runStoreT :: Monad m => StoreT m a -> RequestT m a
+runStoreT = I.runStoreT
+
+runStore :: Store a -> Request a
+runStore = I.runStore
 
 runQuery :: MonadBackend PSQL m => BSL.ByteString
          -> ExceptT BS.ByteString m ([ColumnInfo PSQL], [Row PSQL])

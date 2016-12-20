@@ -196,6 +196,9 @@ runSelectT = iterTM interpreter
       SelectThrowError err -> throwSeakaleError err
       SelectGetBackend f   -> getBackend >>= f
 
+runSelect :: Select backend a -> Request backend a
+runSelect = runSelectT
+
 data UpdateSetter backend a
   = forall n. UpdateSetter (backend -> Vector n (Column, BS.ByteString))
 
@@ -307,3 +310,14 @@ runStoreT = iterT interpreter . hoistFreeT runSelectT
         backend <- getBackend
         let req = buildDeleteRequest backend rel cond
         f =<< execute req
+
+runStore :: Store backend a -> Request backend a
+runStore = iterT interpreter . hoistFreeT runSelectT . runStoreT
+  where
+    interpreter :: Monad m => RequestF backend (RequestT backend m a)
+                -> RequestT backend m a
+    interpreter = \case
+      Query   req f  -> query   req >>= f
+      Execute req f  -> execute req >>= f
+      ThrowError err -> throwSeakaleError err
+      GetBackend f   -> getBackend >>= f
