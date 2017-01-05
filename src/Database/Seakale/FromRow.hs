@@ -5,7 +5,6 @@ module Database.Seakale.FromRow
   , FromRow(..)
   , parseRows
   , parseRow
-  , Null(..)
   , maybeParser
   ) where
 
@@ -198,8 +197,6 @@ parseRow parser backend cols row = do
   let pairs = zip cols row
   snd <$> execParser parser backend pairs
 
-data Null = Null
-
 instance FromRow backend One Null where
   fromRow = pconsume `pbind` \(_, f) -> case fieldValue f of
     Nothing -> preturn Null
@@ -227,9 +224,6 @@ readerParser = pconsume `pbind` \(_, f) -> case fieldValue f of
     in case reads str of
       (x,""):_ -> preturn x
       _ -> pfail $ "unreadable value: " ++ str
-
-instance FromRow backend One String where
-  fromRow = pmap BS.unpack bytestringParser
 
 instance FromRow backend One BS.ByteString where
   fromRow = bytestringParser

@@ -47,13 +47,13 @@ library
                        Database.Seakale.FromRow
                        Database.Seakale.Request
                        Database.Seakale.Request.Internal
-                       Database.Seakale.Storable
-                       Database.Seakale.Storable.Internal
-                       Database.Seakale.Storable.Join
+                       Database.Seakale.Store
+                       Database.Seakale.Store.Internal
+                       Database.Seakale.Store.Join
                        Database.Seakale.ToRow
                        Database.Seakale.Types
 
-  build-depends:       base >=4.8 && <4.9
+  build-depends:       base >=4.8 && <4.10
                      , free
                      , mtl
                      , bytestring

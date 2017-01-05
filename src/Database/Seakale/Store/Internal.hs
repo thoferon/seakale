@@ -1,4 +1,4 @@
-module Database.Seakale.Storable.Internal where
+module Database.Seakale.Store.Internal where
 
 import           Control.Monad.Identity
 import           Control.Monad.Trans
@@ -148,16 +148,25 @@ buildSelectRequest backend Relation{..} cond clauses =
             <> buildWhereClause cond "" backend
             <> buildSelectClauses clauses backend
 
+buildCountRequest :: backend -> Relation backend k l a -> Condition backend a
+                  -> BSL.ByteString
+buildCountRequest backend Relation{..} cond =
+  "SELECT COUNT(*) FROM " <> buildRelationName relationName
+                          <> buildWhereClause cond "" backend
+
 data SelectF backend a
   = forall k l b. Select (Relation backend k l b) (Condition backend b)
                          (SelectClauses backend b)
                          (([ColumnInfo backend], [Row backend]) -> a)
+  | forall k l b. Count (Relation backend k l b) (Condition backend b)
+                        (([ColumnInfo backend], [Row backend]) -> a)
   | SelectThrowError SeakaleError
   | SelectGetBackend (backend -> a)
 
 instance Functor (SelectF backend) where
   fmap f = \case
     Select rel cond clauses g -> Select rel cond clauses (f . g)
+    Count  rel cond         g -> Count  rel cond         (f . g)
     SelectThrowError err      -> SelectThrowError err
     SelectGetBackend g        -> SelectGetBackend (f . g)
 
@@ -167,6 +176,8 @@ type Select  backend = SelectT backend Identity
 class MonadSeakaleBase backend m => MonadSelect backend m where
   select :: Relation backend k l a -> Condition backend a
          -> SelectClauses backend a -> m ([ColumnInfo backend], [Row backend])
+  count :: Relation backend k l a -> Condition backend a
+        -> m ([ColumnInfo backend], [Row backend])
 
 instance Monad m => MonadSeakaleBase backend (FreeT (SelectF backend) m) where
   throwSeakaleError = liftF . SelectThrowError
@@ -174,14 +185,17 @@ instance Monad m => MonadSeakaleBase backend (FreeT (SelectF backend) m) where
 
 instance Monad m => MonadSelect backend (FreeT (SelectF backend) m) where
   select rel cond clauses = liftF $ Select rel cond clauses id
+  count  rel cond         = liftF $ Count  rel cond         id
 
 instance {-# OVERLAPPABLE #-} ( MonadSelect backend m, MonadTrans t
                               , Monad (t m) )
   => MonadSelect backend (t m) where
   select rel cond clauses = lift $ select rel cond clauses
+  count  rel cond         = lift $ count  rel cond
 
 instance Monad m => MonadSelect backend (RequestT backend m) where
   select rel cond clauses = runSelectT $ select rel cond clauses
+  count  rel cond         = runSelectT $ count  rel cond
 
 runSelectT :: Monad m => SelectT backend m a -> RequestT backend m a
 runSelectT = iterTM interpreter
@@ -192,6 +206,10 @@ runSelectT = iterTM interpreter
       Select rel cond clauses f -> do
         backend <- getBackend
         let req = buildSelectRequest backend rel cond clauses
+        f =<< query req
+      Count rel cond f -> do
+        backend <- getBackend
+        let req = buildCountRequest backend rel cond
         f =<< query req
       SelectThrowError err -> throwSeakaleError err
       SelectGetBackend f   -> getBackend >>= f

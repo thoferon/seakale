@@ -31,7 +31,7 @@ library
   exposed-modules:     Database.Seakale.Request.Tests
                        Database.Seakale.Request.Tests.Mock
 
-  build-depends:       base >=4.8 && <4.9
+  build-depends:       base >=4.8 && <4.10
                      , seakale
                      , mtl
                      , bytestring

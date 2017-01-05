@@ -7,7 +7,7 @@ import System.IO
 
 import Database.Seakale.PostgreSQL hiding (withConn)
 import Database.Seakale.PostgreSQL.FromRow
-import Database.Seakale.Storable
+import Database.Seakale.Store
 
 import Shared
 

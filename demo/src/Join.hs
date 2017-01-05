@@ -7,8 +7,8 @@ import System.IO
 
 import Database.Seakale.PostgreSQL hiding (withConn)
 import Database.Seakale.PostgreSQL.FromRow
-import Database.Seakale.Storable
-import Database.Seakale.Storable.Join
+import Database.Seakale.Store
+import Database.Seakale.Store.Join
 
 import Shared
 

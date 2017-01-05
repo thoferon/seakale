@@ -30,14 +30,16 @@ library
                        LambdaCase
                        RecordWildCards
                        OverloadedStrings
+                       FlexibleContexts
 
   exposed-modules:     Database.Seakale.PostgreSQL
                        Database.Seakale.PostgreSQL.FromRow
                        Database.Seakale.PostgreSQL.ToRow
 
-  build-depends:       base >=4.8 && <4.9
+  build-depends:       base >=4.8 && <4.10
                      , seakale
                      , postgresql-libpq
                      , bytestring
                      , mtl
                      , free
+                     , time

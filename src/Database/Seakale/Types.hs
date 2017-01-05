@@ -63,6 +63,7 @@ qappendZero q1 q2 = case q1 of
 parenthesiseQuery :: Query n -> Query n
 parenthesiseQuery q = Plain "(" $ q `qappendZero` Plain ")" EmptyQuery
 
+-- FIXME: we need a separator for the repeated part
 data RepeatQuery :: Nat -> Nat -> Nat -> * where
   RepeatQuery :: Query k -> Query l -> Query i -> RepeatQuery k l i
 
@@ -74,7 +75,6 @@ formatQuery r d = BSL.fromChunks $ go r d
       (Plain bs req', _) -> bs : go req' dat
       (Hole req', Cons bs dat') -> bs : go req' dat'
       (EmptyQuery, Nil) -> []
-      _ -> error "formatQuery: the impossible happened"
 
 formatMany :: RepeatQuery k l i -> QueryData k -> QueryData i -> [QueryData l]
            -> BSL.ByteString
@@ -173,3 +173,5 @@ instance NTimes (Vector Zero) where
 
 instance NTimes (Vector n) => NTimes (Vector ('S n)) where
   ntimes x = Cons x (ntimes x)
+
+data Null = Null

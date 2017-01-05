@@ -6,7 +6,7 @@
 -- are provided to lift properties of a storable value into properties of a
 -- join.
 
-module Database.Seakale.Storable.Join
+module Database.Seakale.Store.Join
   ( JoinLeftProperty(..)
   , JoinRightProperty(..)
   , EntityID(..)
@@ -32,9 +32,9 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
 
 import           Database.Seakale.FromRow
-import           Database.Seakale.Storable
+import           Database.Seakale.Store
 import           Database.Seakale.Types
-import qualified Database.Seakale.Storable.Internal as I
+import qualified Database.Seakale.Store.Internal as I
 
 data JoinLeftProperty (j :: * -> * -> *) f b backend (n :: Nat) c
   = JLeft (f backend n c)

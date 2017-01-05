@@ -12,8 +12,10 @@ import Test.Hspec hiding (after)
 
 import Database.Seakale.FromRow
 import Database.Seakale.PostgreSQL (PSQL(..), Request)
+import Database.Seakale.PostgreSQL.FromRow ()
+import Database.Seakale.PostgreSQL.ToRow ()
 import Database.Seakale.Request.Tests
-import Database.Seakale.Storable
+import Database.Seakale.Store
 import Database.Seakale.ToRow
 import Database.Seakale.Types
 

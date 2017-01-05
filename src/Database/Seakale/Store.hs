@@ -14,18 +14,19 @@
 -- type specifying the properties (fields) on which we can define conditions.
 -- See the demo for an example.
 
-module Database.Seakale.Storable
+module Database.Seakale.Store
   ( Entity(..)
   , MonadSelect
   , MonadStore
   -- * Operations
   , select
   , select_
+  , count
   , getMany
   , getMaybe
   , get
-  , createMany
-  , create
+  , insertMany
+  , insert
   , updateMany
   , update
   , UpdateSetter
@@ -77,7 +78,7 @@ module Database.Seakale.Storable
 
 import           Control.Monad
 
-import           Data.List hiding (groupBy, delete)
+import           Data.List hiding (groupBy, insert, delete)
 import           Data.Maybe
 import           Data.Monoid
 import qualified Data.ByteString.Char8 as BS
@@ -86,9 +87,9 @@ import           Database.Seakale.FromRow
 import           Database.Seakale.ToRow
 import           Database.Seakale.Types
 
-import           Database.Seakale.Storable.Internal
-                   hiding (select, insert, update, delete)
-import qualified Database.Seakale.Storable.Internal as I
+import           Database.Seakale.Store.Internal
+                   hiding (select, count, insert, update, delete)
+import qualified Database.Seakale.Store.Internal as I
 
 -- | A value together with its identifier.
 data Entity a = Entity
@@ -124,6 +125,18 @@ select_ :: ( MonadSelect backend m, Storable backend k l a
         -> m [Entity a]
 select_ cond = select cond mempty
 
+-- | Count the number of rows matching the conditions.
+count :: (MonadSelect backend m, Storable backend k l a) => Condition backend a
+      -> m Integer
+count cond = do
+  backend <- getBackend
+  (cols, rows) <- I.count (relation backend) cond
+  case parseRows fromRow backend cols rows of
+    Left  err -> throwSeakaleError $ RowParseError err
+    Right [x] -> return x
+    Right _   ->
+      throwSeakaleError $ RowParseError "Non-unique response to count"
+
 -- | Select all entities with the given IDs.
 getMany :: ( MonadSelect backend m, Storable backend k l a
            , FromRow backend (k :+ l) (Entity a), ToRow backend k (EntityID a) )
@@ -146,10 +159,10 @@ get :: ( MonadSelect backend m, Storable backend k l a
 get i = maybe (throwSeakaleError EntityNotFoundError) return =<< getMaybe i
 
 -- | Insert the given values and return their ID in the same order.
-createMany :: forall backend m k l a.
+insertMany :: forall backend m k l a.
               ( MonadStore backend m, Storable backend k l a, ToRow backend l a
               , FromRow backend k (EntityID a) ) => [a] -> m [EntityID a]
-createMany values = do
+insertMany values = do
   backend <- getBackend
   let rel = relation backend :: Relation backend k l a
       dat = map (toRow backend) values
@@ -158,10 +171,10 @@ createMany values = do
     Left err -> throwSeakaleError $ RowParseError err
     Right xs -> return xs
 
--- | Like 'createMany' but for only one value.
-create :: ( MonadStore backend m, Storable backend k l a, ToRow backend l a
+-- | Like 'insertMany' but for only one value.
+insert :: ( MonadStore backend m, Storable backend k l a, ToRow backend l a
           , FromRow backend k (EntityID a) ) => a -> m (EntityID a)
-create = fmap head . createMany . pure
+insert = fmap head . insertMany . pure
 
 -- | Update columns on rows matching the given conditions and return the number
 -- of rows affected.
@@ -323,6 +336,11 @@ instance Property backend a (EntityIDProperty a) where
 
 (||.) :: Condition backend a -> Condition backend a -> Condition backend a
 (||.) = combineConditions "OR"
+
+infix 4 ==., /=., <=., <., >=., >.
+infix 4 ==#, /=#, <=#, <#, >=#, >#
+infix 4 ==~, /=~, <=~, <~, >=~, >~
+infixr 2 &&., ||.
 
 isNull :: Property backend a f => f backend n b -> Condition backend a
 isNull prop = Condition $ \prefix backend ->

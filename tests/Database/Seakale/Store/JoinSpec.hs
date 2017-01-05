@@ -1,7 +1,7 @@
-module Database.Seakale.Storable.JoinSpec where
+module Database.Seakale.Store.JoinSpec where
 
-import Database.Seakale.Storable
-import Database.Seakale.Storable.Join
+import Database.Seakale.Store
+import Database.Seakale.Store.Join
 
 import SpecHelpers
 

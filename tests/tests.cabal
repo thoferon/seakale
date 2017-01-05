@@ -30,8 +30,8 @@ test-suite unit-tests
                        GADTs
                        LambdaCase
 
-  other-modules:       Database.Seakale.StorableSpec
-                       Database.Seakale.Storable.JoinSpec
+  other-modules:       Database.Seakale.StoreSpec
+                       Database.Seakale.Store.JoinSpec
                        SpecHelpers
 
   build-depends:       base

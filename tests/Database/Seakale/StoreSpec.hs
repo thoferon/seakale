@@ -1,6 +1,6 @@
-module Database.Seakale.StorableSpec where
+module Database.Seakale.StoreSpec where
 
-import Database.Seakale.Storable
+import Database.Seakale.Store
 import Database.Seakale.Types
 
 import SpecHelpers
@@ -73,13 +73,13 @@ spec = do
       mock' `shouldSatisfy` mockConsumed
       ents `shouldBe` Left EntityNotFoundError
 
-  describe "createMany" $ do
+  describe "insertMany" $ do
     it "inserts new values" $ do
       let mock = mockQuery "INSERT INTO users (email, password) VALUES\
                            \ ('user42@host', 'secret')\
                            \ ('user99@host', 'secret') RETURNING id"
                            (userIDCols, [user42IDRow, user99IDRow])
-          (ents, mock') = run' mock $ createMany [user42, user99]
+          (ents, mock') = run' mock $ insertMany [user42, user99]
 
       mock' `shouldSatisfy` mockConsumed
       ents `shouldBe` Right [UserID 42, UserID 99]

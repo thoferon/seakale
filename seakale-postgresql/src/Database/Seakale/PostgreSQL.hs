@@ -57,7 +57,7 @@ import           Database.PostgreSQL.LibPQ hiding (Row, status)
 import           Database.Seakale.Types
                    hiding (runQuery, runExecute, EmptyQuery)
 import qualified Database.Seakale.Request.Internal as I
-import qualified Database.Seakale.Storable.Internal as I
+import qualified Database.Seakale.Store.Internal as I
 import qualified Database.Seakale.Types as T
 
 data ConnectInfo = ConnectInfo
