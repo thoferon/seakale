@@ -91,33 +91,13 @@ import           Database.Seakale.Store.Internal
                    hiding (select, count, insert, update, delete)
 import qualified Database.Seakale.Store.Internal as I
 
--- | A value together with its identifier.
-data Entity a = Entity
-  { entityID  :: EntityID a
-  , entityVal :: a
-  }
-
-deriving instance (Show (EntityID a), Show a) => Show (Entity a)
-deriving instance (Eq   (EntityID a), Eq   a) => Eq   (Entity a)
-
-instance (FromRow backend k (EntityID a), FromRow backend l a, (k :+ l) ~ i)
-  => FromRow backend i (Entity a) where
-  fromRow = Entity `pmap` fromRow `papply` fromRow
-
-instance (ToRow backend k (EntityID a), ToRow backend l a, (k :+ l) ~ i)
-  => ToRow backend i (Entity a) where
-  toRow backend (Entity i v) = toRow backend i `vappend` toRow backend v
-
 -- | Select all entities for the corresponding relation.
 select :: ( MonadSelect backend m, Storable backend k l a
           , FromRow backend (k :+ l) (Entity a) ) => Condition backend a
        -> SelectClauses backend a -> m [Entity a]
 select cond clauses = do
   backend <- getBackend
-  (cols, rows) <- I.select (relation backend) cond clauses
-  case parseRows fromRow backend cols rows of
-    Left err -> throwSeakaleError $ RowParseError err
-    Right xs -> return xs
+  I.select (relation backend) cond clauses
 
 -- | Like 'select' but without any other clauses than @WHERE@.
 select_ :: ( MonadSelect backend m, Storable backend k l a
@@ -130,12 +110,7 @@ count :: (MonadSelect backend m, Storable backend k l a) => Condition backend a
       -> m Integer
 count cond = do
   backend <- getBackend
-  (cols, rows) <- I.count (relation backend) cond
-  case parseRows fromRow backend cols rows of
-    Left  err -> throwSeakaleError $ RowParseError err
-    Right [x] -> return x
-    Right _   ->
-      throwSeakaleError $ RowParseError "Non-unique response to count"
+  I.count (relation backend) cond
 
 -- | Select all entities with the given IDs.
 getMany :: ( MonadSelect backend m, Storable backend k l a
@@ -162,14 +137,7 @@ get i = maybe (throwSeakaleError EntityNotFoundError) return =<< getMaybe i
 insertMany :: forall backend m k l a.
               ( MonadStore backend m, Storable backend k l a, ToRow backend l a
               , FromRow backend k (EntityID a) ) => [a] -> m [EntityID a]
-insertMany values = do
-  backend <- getBackend
-  let rel = relation backend :: Relation backend k l a
-      dat = map (toRow backend) values
-  (cols, rows) <- I.insert rel dat
-  case parseRows fromRow backend cols rows of
-    Left err -> throwSeakaleError $ RowParseError err
-    Right xs -> return xs
+insertMany = I.insert
 
 -- | Like 'insertMany' but for only one value.
 insert :: ( MonadStore backend m, Storable backend k l a, ToRow backend l a
@@ -181,10 +149,7 @@ insert = fmap head . insertMany . pure
 updateMany :: forall backend m k l a.
               (MonadStore backend m, Storable backend k l a)
            => UpdateSetter backend a -> Condition backend a -> m Integer
-updateMany setter cond = do
-  backend <- getBackend
-  let rel = relation backend :: Relation backend k l a
-  I.update rel setter cond
+updateMany setter cond = I.update setter cond
 
 -- | Update columns on the row with the given ID.
 update :: ( MonadStore backend m, Storable backend k l a
@@ -196,10 +161,7 @@ update i setter = void $ updateMany setter $ EntityID ==. i
 deleteMany :: forall backend m k l a.
               (MonadStore backend m, Storable backend k l a)
            => Condition backend a -> m Integer
-deleteMany cond = do
-  backend <- getBackend
-  let rel = relation backend :: Relation backend k l a
-  I.delete rel cond
+deleteMany = I.delete
 
 -- | Delete the row with the given ID.
 delete :: ( MonadStore backend m, Storable backend k l a

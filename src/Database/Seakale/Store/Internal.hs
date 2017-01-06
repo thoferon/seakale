@@ -7,11 +7,31 @@ import           Control.Monad.Trans.Free
 import           Data.List hiding (insert, delete)
 import           Data.Monoid
 import           Data.String
+import           Data.Typeable
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as BSL
 
+import           Database.Seakale.FromRow
+import           Database.Seakale.ToRow
 import           Database.Seakale.Types
 import           Database.Seakale.Request.Internal
+
+-- | A value together with its identifier.
+data Entity a = Entity
+  { entityID  :: EntityID a
+  , entityVal :: a
+  }
+
+deriving instance (Show (EntityID a), Show a) => Show (Entity a)
+deriving instance (Eq   (EntityID a), Eq   a) => Eq   (Entity a)
+
+instance (FromRow backend k (EntityID a), FromRow backend l a, (k :+ l) ~ i)
+  => FromRow backend i (Entity a) where
+  fromRow = Entity `pmap` fromRow `papply` fromRow
+
+instance (ToRow backend k (EntityID a), ToRow backend l a, (k :+ l) ~ i)
+  => ToRow backend i (Entity a) where
+  toRow backend (Entity i v) = toRow backend i `vappend` toRow backend v
 
 data Relation backend k l a = Relation
   { relationName      :: RelationName
@@ -34,7 +54,8 @@ instance IsString Column where
   fromString str = Column $ \prefix ->
     if BS.null prefix then fromString str else prefix <> "." <> fromString str
 
-class Storable backend (k :: Nat) (l :: Nat) a | a -> k, a -> l where
+class Typeable a
+  => Storable backend (k :: Nat) (l :: Nat) a | a -> k, a -> l where
   data EntityID a :: *
   relation :: backend -> Relation backend k l a
 
@@ -155,11 +176,11 @@ buildCountRequest backend Relation{..} cond =
                           <> buildWhereClause cond "" backend
 
 data SelectF backend a
-  = forall k l b. Select (Relation backend k l b) (Condition backend b)
-                         (SelectClauses backend b)
-                         (([ColumnInfo backend], [Row backend]) -> a)
-  | forall k l b. Count (Relation backend k l b) (Condition backend b)
-                        (([ColumnInfo backend], [Row backend]) -> a)
+  = forall k l b. (Storable backend k l b, FromRow backend (k :+ l) (Entity b))
+    => Select (Relation backend k l b) (Condition backend b)
+              (SelectClauses backend b) ([Entity b] -> a)
+  | forall k l b. Storable backend k l b
+    => Count (Relation backend k l b) (Condition backend b) (Integer -> a)
   | SelectThrowError SeakaleError
   | SelectGetBackend (backend -> a)
 
@@ -174,10 +195,11 @@ type SelectT backend = FreeT (SelectF backend)
 type Select  backend = SelectT backend Identity
 
 class MonadSeakaleBase backend m => MonadSelect backend m where
-  select :: Relation backend k l a -> Condition backend a
-         -> SelectClauses backend a -> m ([ColumnInfo backend], [Row backend])
-  count :: Relation backend k l a -> Condition backend a
-        -> m ([ColumnInfo backend], [Row backend])
+  select :: (Storable backend k l a, FromRow backend (k :+ l) (Entity a))
+         => Relation backend k l a -> Condition backend a
+         -> SelectClauses backend a -> m [Entity a]
+  count :: Storable backend k l a => Relation backend k l a
+        -> Condition backend a -> m Integer
 
 instance Monad m => MonadSeakaleBase backend (FreeT (SelectF backend) m) where
   throwSeakaleError = liftF . SelectThrowError
@@ -206,11 +228,21 @@ runSelectT = iterTM interpreter
       Select rel cond clauses f -> do
         backend <- getBackend
         let req = buildSelectRequest backend rel cond clauses
-        f =<< query req
+        (cols, rows) <- query req
+        case parseRows fromRow backend cols rows of
+          Left err -> throwSeakaleError $ RowParseError err
+          Right xs -> f xs
+
       Count rel cond f -> do
         backend <- getBackend
         let req = buildCountRequest backend rel cond
-        f =<< query req
+        (cols, rows) <- query req
+        case parseRows fromRow backend cols rows of
+          Left  err -> throwSeakaleError $ RowParseError err
+          Right [x] -> f x
+          Right _   ->
+            throwSeakaleError $ RowParseError "Non-unique response to count"
+
       SelectThrowError err -> throwSeakaleError err
       SelectGetBackend f   -> getBackend >>= f
 
@@ -226,46 +258,47 @@ instance Monoid (UpdateSetter backend a) where
     UpdateSetter $ \backend -> f backend `vappend` g backend
 
 data StoreF backend a
-  = forall k l b. Insert (Relation backend k l b) [QueryData l]
-                         (([ColumnInfo backend], [Row backend]) -> a)
-  | forall k l b. Update (Relation backend k l b) (UpdateSetter backend b)
-                         (Condition backend b) (Integer -> a)
-  | forall k l b. Delete (Relation backend k l b) (Condition backend b)
-                         (Integer -> a)
+  = forall k l b. ( Storable backend k l b, ToRow backend l b
+                  , FromRow backend k (EntityID b) )
+    => Insert [b] ([EntityID b] -> a)
+  | forall k l b. Storable backend k l b
+    => Update (UpdateSetter backend b) (Condition backend b) (Integer -> a)
+  | forall k l b. Storable backend k l b
+    => Delete (Condition backend b) (Integer -> a)
 
 instance Functor (StoreF backend) where
   fmap f = \case
-    Insert rel dat         g -> Insert rel dat         (f . g)
-    Update rel setter cond g -> Update rel setter cond (f . g)
-    Delete rel        cond g -> Delete rel        cond (f . g)
+    Insert dat         g -> Insert dat         (f . g)
+    Update setter cond g -> Update setter cond (f . g)
+    Delete        cond g -> Delete        cond (f . g)
 
 type StoreT backend m = FreeT (StoreF backend) (SelectT backend m)
 type Store  backend   = StoreT backend (Select backend)
 
 class MonadSelect backend m => MonadStore backend m where
-  insert :: Relation backend k l a -> [QueryData l]
-         -> m ([ColumnInfo backend], [Row backend])
-  update :: Relation backend k l a -> UpdateSetter backend a
+  insert :: ( Storable backend k l b, ToRow backend l b
+            , FromRow backend k (EntityID b) ) => [b] -> m [EntityID b]
+  update :: Storable backend k l a => UpdateSetter backend a
          -> Condition backend a -> m Integer
-  delete :: Relation backend k l a -> Condition backend a -> m Integer
+  delete :: Storable backend k l a => Condition backend a -> m Integer
 
 instance MonadSelect backend m
   => MonadStore backend (FreeT (StoreF backend) m) where
-  insert rel dat         = liftF $ Insert rel dat         id
-  update rel setter cond = liftF $ Update rel setter cond id
-  delete rel        cond = liftF $ Delete rel        cond id
+  insert dat         = liftF $ Insert dat         id
+  update setter cond = liftF $ Update setter cond id
+  delete        cond = liftF $ Delete        cond id
 
 instance {-# OVERLAPPABLE #-} ( MonadStore backend m, MonadTrans t
                               , Monad (t m) )
   => MonadStore backend (t m) where
-  insert rel dat         = lift $ insert rel dat
-  update rel setter cond = lift $ update rel setter cond
-  delete rel cond        = lift $ delete rel cond
+  insert dat         = lift $ insert dat
+  update setter cond = lift $ update setter cond
+  delete cond        = lift $ delete cond
 
 instance Monad m => MonadStore backend (RequestT backend m) where
-  insert rel dat         = runStoreT $ insert rel dat
-  update rel setter cond = runStoreT $ update rel setter cond
-  delete rel cond        = runStoreT $ delete rel cond
+  insert             = runStoreT . insert
+  update setter cond = runStoreT $ update setter cond
+  delete             = runStoreT . delete
 
 buildInsertRequest :: Relation backend k l a -> [QueryData l] -> BSL.ByteString
 buildInsertRequest Relation{..} dat =
@@ -311,23 +344,36 @@ buildDeleteRequest backend Relation{..} cond =
   "DELETE FROM " <> buildRelationName relationName
                  <> buildWhereClause cond "" backend
 
-runStoreT :: Monad m => StoreT backend m a -> RequestT backend m a
+runStoreT :: forall backend m a. Monad m
+          => StoreT backend m a -> RequestT backend m a
 runStoreT = iterT interpreter . hoistFreeT runSelectT
   where
     interpreter :: Monad m => StoreF backend (RequestT backend m a)
                 -> RequestT backend m a
     interpreter = \case
-      Insert rel dat f -> do
-        let req = buildInsertRequest rel dat
-        f =<< query req
-      Update rel setter cond f -> do
+      Insert dat f -> _insert dat f
+      Update setter cond f -> do
         backend <- getBackend
-        let req = buildUpdateRequest backend rel setter cond
+        let req = buildUpdateRequest backend (relation backend) setter cond
         f =<< execute req
-      Delete rel cond f -> do
+      Delete cond f -> do
         backend <- getBackend
-        let req = buildDeleteRequest backend rel cond
+        let req = buildDeleteRequest backend (relation backend) cond
         f =<< execute req
+
+    _insert :: forall k l b. ( Storable backend k l b, ToRow backend l b
+                             , FromRow backend k (EntityID b) )
+            => [b] -> ([EntityID b] -> RequestT backend m a)
+            -> RequestT backend m a
+    _insert dat f = do
+        backend <- getBackend
+        let req = buildInsertRequest
+                    (relation backend :: Relation backend k l b)
+                    (map (toRow backend) dat)
+        (cols, rows) <- query req
+        case parseRows fromRow backend cols rows of
+          Left err -> throwSeakaleError $ RowParseError err
+          Right xs -> f xs
 
 runStore :: Store backend a -> Request backend a
 runStore = iterT interpreter . hoistFreeT runSelectT . runStoreT

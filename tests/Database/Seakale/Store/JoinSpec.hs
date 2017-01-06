@@ -24,7 +24,7 @@ spec = do
           (ents, mock') = run' mock $ do
             let rel = (leftJoin
                         (innerJoin_ (JLeft CommentPostID ==# JRight EntityID))
-                        table
+                        relation
                         (JLeft (JLeft CommentUserID) ==# JRight EntityID))
             selectJoin rel
                        (JLeft (JLeft CommentTitle) /=. "")
