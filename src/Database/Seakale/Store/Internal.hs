@@ -39,6 +39,12 @@ data Relation backend k l a = Relation
   , relationColumns   :: Vector l Column
   }
 
+eqRelation :: Relation backend k l a -> Relation backend k l a -> Bool
+eqRelation rel rel' =
+  relationName rel == relationName rel'
+  && relationIDColumns rel `eqVector` relationIDColumns rel'
+  && relationColumns rel `eqVector` relationColumns rel'
+
 newtype RelationName
   = RelationName { unRelationName :: BS.ByteString -> BS.ByteString }
 
@@ -48,13 +54,19 @@ instance IsString RelationName where
       then fromString str
       else fromString str <> " AS " <> prefix
 
+instance Eq RelationName where
+  (==) rel1 rel2 = unRelationName rel1 "" == unRelationName rel2 ""
+
 newtype Column = Column { unColumn :: BS.ByteString -> BS.ByteString }
 
 instance IsString Column where
   fromString str = Column $ \prefix ->
     if BS.null prefix then fromString str else prefix <> "." <> fromString str
 
-class Typeable a
+instance Eq Column where
+  (==) col1 col2 = unColumn col1 "" == unColumn col2 ""
+
+class (Typeable backend, Typeable k, Typeable l, Typeable a)
   => Storable backend (k :: Nat) (l :: Nat) a | a -> k, a -> l where
   data EntityID a :: *
   relation :: backend -> Relation backend k l a
@@ -65,6 +77,12 @@ data Condition backend a
 instance Monoid (Condition backend a) where
   mempty = Condition $ \_ _ -> (EmptyQuery, Nil)
   mappend = combineConditions "AND"
+
+eqCondition :: backend -> Condition backend a -> Condition backend a -> Bool
+eqCondition backend (Condition f) (Condition g) =
+  let (condQ,  condD)  = f "" backend
+      (condQ', condD') = g "" backend
+  in condQ `eqQuery` condQ' && condD `eqVector` condD'
 
 combineConditions :: BS.ByteString -> Condition backend a -> Condition backend a
                   -> Condition backend a
@@ -126,6 +144,14 @@ instance Monoid (SelectClauses backend a) where
     , selectLimit  = maybe (selectLimit sc1) Just (selectLimit sc2)
     , selectOffset = maybe (selectOffset sc1) Just (selectOffset sc2)
     }
+
+eqSelectClauses :: backend -> SelectClauses backend a -> SelectClauses backend a
+                -> Bool
+eqSelectClauses backend clauses clauses' =
+  selectGroupBy clauses backend == selectGroupBy clauses' backend
+  && selectOrderBy clauses backend == selectOrderBy clauses' backend
+  && selectLimit clauses == selectLimit clauses'
+  && selectOffset clauses == selectOffset clauses'
 
 buildWhereClause :: Condition backend a -> BS.ByteString -> backend
                  -> BSL.ByteString
@@ -257,6 +283,11 @@ instance Monoid (UpdateSetter backend a) where
   mappend (UpdateSetter f) (UpdateSetter g) =
     UpdateSetter $ \backend -> f backend `vappend` g backend
 
+eqUpdateSetter :: backend -> UpdateSetter backend a -> UpdateSetter backend a
+               -> Bool
+eqUpdateSetter backend (UpdateSetter f) (UpdateSetter g) =
+  f backend `eqVector` g backend
+
 data StoreF backend a
   = forall k l b. ( Storable backend k l b, ToRow backend l b
                   , FromRow backend k (EntityID b) )
@@ -273,7 +304,7 @@ instance Functor (StoreF backend) where
     Delete        cond g -> Delete        cond (f . g)
 
 type StoreT backend m = FreeT (StoreF backend) (SelectT backend m)
-type Store  backend   = StoreT backend (Select backend)
+type Store  backend   = StoreT backend Identity
 
 class MonadSelect backend m => MonadStore backend m where
   insert :: ( Storable backend k l b, ToRow backend l b
@@ -312,7 +343,7 @@ buildInsertRequest Relation{..} dat =
         between = buildBetween " (" ")" relationColumns
         after   = Plain (" RETURNING "
                          <> BSL.toStrict (buildColumnList
-                                          (vectorToList relationIDColumns)))
+                                         (vectorToList relationIDColumns)))
                         EmptyQuery
         q = RepeatQuery before between after
 
@@ -376,12 +407,4 @@ runStoreT = iterT interpreter . hoistFreeT runSelectT
           Right xs -> f xs
 
 runStore :: Store backend a -> Request backend a
-runStore = iterT interpreter . hoistFreeT runSelectT . runStoreT
-  where
-    interpreter :: Monad m => RequestF backend (RequestT backend m a)
-                -> RequestT backend m a
-    interpreter = \case
-      Query   req f  -> query   req >>= f
-      Execute req f  -> execute req >>= f
-      ThrowError err -> throwSeakaleError err
-      GetBackend f   -> getBackend >>= f
+runStore = runStoreT

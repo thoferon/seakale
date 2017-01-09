@@ -47,6 +47,13 @@ data Query :: Nat -> * where
   Hole       :: Query n -> Query ('S n)
   EmptyQuery :: Query Zero
 
+eqQuery :: Query n -> Query m -> Bool
+eqQuery = curry $ \case
+  (Plain bs q, Plain bs' q') -> bs == bs' && q `eqQuery` q'
+  (Hole q, Hole q') -> q `eqQuery` q'
+  (EmptyQuery, EmptyQuery) -> True
+  _ -> False
+
 qappend :: Query n -> Query m -> Query (n :+ m)
 qappend q1 q2 = case q1 of
   Plain bs q1' -> Plain bs (qappend q1' q2)
@@ -112,6 +119,8 @@ data Vector :: Nat -> * -> * where
   Cons :: a -> Vector n a -> Vector ('S n) a
   Nil  :: Vector Zero a
 
+deriving instance Eq a => Eq (Vector n a)
+
 instance Functor (Vector n) where
   fmap f = \case
     Cons x xs -> Cons (f x) (fmap f xs)
@@ -147,6 +156,12 @@ vectorToList = \case
 
 singleton :: a -> Vector One a
 singleton x = Cons x Nil
+
+eqVector :: Eq a => Vector n a -> Vector m a -> Bool
+eqVector = curry $ \case
+  (Nil, Nil) -> True
+  (Cons x xs, Cons y ys) -> x == y && eqVector xs ys
+  _ -> False
 
 instance IsList (Vector Zero a) where
   type Item (Vector Zero a) = a

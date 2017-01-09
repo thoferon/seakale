@@ -14,6 +14,7 @@ module Database.Seakale.Store.Join
   , RightJoin(..)
   , InnerJoin(..)
   , FullJoin(..)
+  , JoinRelation
   , selectJoin
   , selectJoin_
   , countJoin
@@ -30,6 +31,7 @@ module Database.Seakale.Store.Join
 import           GHC.Generics
 
 import           Data.Monoid
+import           Data.Typeable
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
 
@@ -56,7 +58,7 @@ instance Property backend b f
 data LeftJoin a b = LeftJoin a (Maybe b) deriving (Show, Eq, Generic)
 
 instance ( Storable backend k l a, Storable backend i j b
-        , (k :+ i) ~ g, (l :+ j) ~ h )
+        , (k :+ i) ~ g, (l :+ j) ~ h, Typeable g, Typeable h )
   => Storable backend g h (LeftJoin a b) where
   data EntityID (LeftJoin a b) = LeftJoinID (EntityID a) (Maybe (EntityID b))
   relation = leftJoin_ mempty
@@ -78,7 +80,7 @@ deriving instance (Eq (EntityID a), Eq (EntityID b))
 data RightJoin a b = RightJoin (Maybe a) b deriving (Show, Eq)
 
 instance ( Storable backend k l a, Storable backend i j b
-         , (k :+ i) ~ g, (l :+ j) ~ h )
+         , (k :+ i) ~ g, (l :+ j) ~ h, Typeable g, Typeable h )
   => Storable backend g h (RightJoin a b) where
   data EntityID (RightJoin a b) = RightJoinID (Maybe (EntityID a)) (EntityID b)
   relation = rightJoin_ mempty
@@ -100,7 +102,7 @@ deriving instance (Eq (EntityID a), Eq (EntityID b))
 data InnerJoin a b = InnerJoin a b deriving (Show, Eq)
 
 instance ( Storable backend k l a, Storable backend i j b
-         , (k :+ i) ~ g, (l :+ j) ~ h )
+         , (k :+ i) ~ g, (l :+ j) ~ h, Typeable g, Typeable h )
   => Storable backend g h (InnerJoin a b) where
   data EntityID (InnerJoin a b) = InnerJoinID (EntityID a) (EntityID b)
   relation = innerJoin_ mempty
@@ -122,7 +124,7 @@ deriving instance (Eq (EntityID a), Eq (EntityID b))
 data FullJoin a b = FullJoin (Maybe a) (Maybe b) deriving (Show, Eq)
 
 instance ( Storable backend k l a, Storable backend i j b
-        , (k :+ i) ~ g, (l :+ j) ~ h )
+        , (k :+ i) ~ g, (l :+ j) ~ h, Typeable g, Typeable h )
   => Storable backend g h (FullJoin a b) where
   data EntityID (FullJoin a b)
     = FullJoinID (Maybe (EntityID a)) (Maybe (EntityID b))
