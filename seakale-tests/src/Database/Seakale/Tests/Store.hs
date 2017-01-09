@@ -1,12 +1,23 @@
 module Database.Seakale.Tests.Store
   ( StoreMock
   , mockSelect
+  , mockSelect_
+  , mockFailingSelect
   , mockCount
+  , mockFailingCount
+  , mockGetMany
+  , mockGet
   , mockSelectJoin
   , mockCountJoin
+  , mockInsertMany
   , mockInsert
+  , mockFailingInsertMany
+  , mockUpdateMany
   , mockUpdate
+  , mockFailingUpdateMany
+  , mockDeleteMany
   , mockDelete
+  , mockFailingDeleteMany
   , runSelect
   , runSelectT
   , runStore
@@ -27,6 +38,7 @@ import           Data.Monoid
 import           Data.Typeable
 import qualified Data.ByteString.Lazy.Char8 as BSL
 
+import           Database.Seakale.Store hiding (get)
 import           Database.Seakale.Store.Internal
                    hiding (runSelect, runSelectT, runStore, runStoreT)
 import           Database.Seakale.Store.Join
@@ -38,50 +50,104 @@ import           Database.Seakale.Tests.Mock
 data StoreMock backend
   = forall k l a. Storable backend k l a
     => MockSelect (backend -> Relation backend k l a) (Condition backend a)
-                  (SelectClauses backend a) [Entity a]
+                  (SelectClauses backend a) (Either SeakaleError [Entity a])
   | forall k l a. Storable backend k l a
     => MockCount (backend -> Relation backend k l a) (Condition backend a)
-                 Integer
-  | forall k l a. (Storable backend k l a, Eq a) => MockInsert [a] [EntityID a]
+                 (Either SeakaleError Integer)
+  | forall k l a. (Storable backend k l a, Eq a)
+    => MockInsert [a] (Either SeakaleError [EntityID a])
   | forall k l a. Storable backend k l a
-    => MockUpdate (UpdateSetter backend a) (Condition backend a) Integer
+    => MockUpdate (UpdateSetter backend a) (Condition backend a)
+                  (Either SeakaleError Integer)
   | forall k l a. Storable backend k l a
-    => MockDelete (Condition backend a) Integer
+    => MockDelete (Condition backend a) (Either SeakaleError Integer)
 
 mockSelect :: Storable backend k l a => Condition backend a
            -> SelectClauses backend a -> [Entity a]
            -> Mock (StoreMock backend) ()
-mockSelect cond clauses ents = Action $ MockSelect relation cond clauses ents
+mockSelect cond clauses ents =
+  Action $ MockSelect relation cond clauses (Right ents)
+
+mockSelect_ :: Storable backend k l a => Condition backend a -> [Entity a]
+            -> Mock (StoreMock backend) ()
+mockSelect_ cond ents = mockSelect cond mempty ents
+
+mockFailingSelect :: Storable backend k l a => Condition backend a
+                  -> SelectClauses backend a -> SeakaleError
+                  -> Mock (StoreMock backend) ()
+mockFailingSelect cond clauses err =
+  Action $ MockSelect relation cond clauses (Left err)
 
 mockCount :: Storable backend k l a => Condition backend a -> Integer
           -> Mock (StoreMock backend) ()
-mockCount cond n = Action $ MockCount relation cond n
+mockCount cond n = Action $ MockCount relation cond (Right n)
+
+mockFailingCount :: Storable backend k l a => Condition backend a
+                 -> SeakaleError -> Mock (StoreMock backend) ()
+mockFailingCount cond err = Action $ MockCount relation cond (Left err)
+
+mockGetMany :: (Storable backend k l a, ToRow backend k (EntityID a))
+            => [EntityID a] -> [Entity a] -> Mock (StoreMock backend) ()
+mockGetMany ids ents = mockSelect_ (EntityID `inList` ids) ents
+
+mockGet :: (Storable backend k l a, ToRow backend k (EntityID a))
+        => EntityID a -> a -> Mock (StoreMock backend) ()
+mockGet i v = mockSelect (EntityID ==. i) (limit 1) [Entity i v]
 
 mockSelectJoin :: Storable backend k l a => JoinRelation backend k l a
                -> Condition backend a -> SelectClauses backend a -> [Entity a]
                -> Mock (StoreMock backend) ()
-mockSelectJoin rel cond clauses ents = Action $ MockSelect rel cond clauses ents
+mockSelectJoin rel cond clauses ents =
+  Action $ MockSelect rel cond clauses (Right ents)
 
 mockCountJoin :: Storable backend k l a => JoinRelation backend k l a
               -> Condition backend a -> Integer -> Mock (StoreMock backend) ()
-mockCountJoin rel cond n = Action $ MockCount rel cond n
+mockCountJoin rel cond n = Action $ MockCount rel cond (Right n)
 
-mockInsert :: (Storable backend k l a, Eq a) => [a] -> [EntityID a]
+mockInsertMany :: (Storable backend k l a, Eq a) => [a] -> [EntityID a]
+               -> Mock (StoreMock backend) ()
+mockInsertMany vals ids = Action $ MockInsert vals (Right ids)
+
+mockInsert :: (Storable backend k l a, Eq a) => a -> EntityID a
            -> Mock (StoreMock backend) ()
-mockInsert vals ids = Action $ MockInsert vals ids
+mockInsert v i = mockInsertMany [v] [i]
 
-mockUpdate :: Storable backend k l a => UpdateSetter backend a
-           -> Condition backend a -> Integer -> Mock (StoreMock backend) ()
-mockUpdate setter cond n = Action $ MockUpdate setter cond n
+mockFailingInsertMany :: (Storable backend k l a, Eq a) => [a] -> SeakaleError
+                      -> Mock (StoreMock backend) ()
+mockFailingInsertMany vals err = Action $ MockInsert vals (Left err)
 
-mockDelete :: Storable backend k l a => Condition backend a -> Integer
+mockUpdateMany :: Storable backend k l a => UpdateSetter backend a
+               -> Condition backend a -> Integer
+               -> Mock (StoreMock backend) ()
+mockUpdateMany setter cond n = Action $ MockUpdate setter cond (Right n)
+
+mockUpdate :: (Storable backend k l a, ToRow backend k (EntityID a))
+           => EntityID a -> UpdateSetter backend a
            -> Mock (StoreMock backend) ()
-mockDelete cond n = Action $ MockDelete cond n
+mockUpdate i setter = mockUpdateMany setter (EntityID ==. i) 1
+
+mockFailingUpdateMany :: Storable backend k l a => UpdateSetter backend a
+                      -> Condition backend a -> SeakaleError
+                      -> Mock (StoreMock backend) ()
+mockFailingUpdateMany setter cond err =
+  Action $ MockUpdate setter cond (Left err)
+
+mockDeleteMany :: Storable backend k l a => Condition backend a -> Integer
+               -> Mock (StoreMock backend) ()
+mockDeleteMany cond n = Action $ MockDelete cond (Right n)
+
+mockDelete :: (Storable backend k l a, ToRow backend k (EntityID a))
+           => EntityID a -> Mock (StoreMock backend) ()
+mockDelete i = mockDeleteMany (EntityID ==. i) 1
+
+mockFailingDeleteMany :: Storable backend k l a => Condition backend a
+                      -> SeakaleError -> Mock (StoreMock backend) ()
+mockFailingDeleteMany cond err = Action $ MockDelete cond (Left err)
 
 fakeSelect :: Storable backend k l a => backend -> Relation backend k l a
            -> Condition backend a -> SelectClauses backend a
            -> Mock (StoreMock backend) b
-           -> Maybe ([Entity a], Mock (StoreMock backend) b)
+           -> Maybe (Either SeakaleError [Entity a], Mock (StoreMock backend) b)
 fakeSelect backend rel cond clauses = consumeMock $ \case
   MockSelect frel cond' clauses' ents -> do
     ents'     <- cast ents
@@ -96,7 +162,7 @@ fakeSelect backend rel cond clauses = consumeMock $ \case
 fakeCount :: (Storable backend k l a, Typeable backend) => backend
           -> Relation backend k l a -> Condition backend a
           -> Mock (StoreMock backend) b
-          -> Maybe (Integer, Mock (StoreMock backend) b)
+          -> Maybe (Either SeakaleError Integer, Mock (StoreMock backend) b)
 fakeCount backend rel cond = consumeMock $ \case
   MockCount frel cond' n -> do
     rel'   <- cast $ frel backend
@@ -143,7 +209,9 @@ runSelectHelper b = iterT (interpreter b) . hoistFreeT (lift . lift)
             let req = buildSelectRequest backend rel cond clauses
             E.throwError $ BackendError $
               "no mock found for request: " <> BSL.toStrict req
-          Just (ents, mock') -> put mock' >> f ents
+          Just (ents, mock') -> do
+            put mock'
+            either E.throwError f ents
 
       Count rel cond f -> do
         mock <- get
@@ -152,13 +220,16 @@ runSelectHelper b = iterT (interpreter b) . hoistFreeT (lift . lift)
             let req = buildCountRequest backend rel cond
             E.throwError $ BackendError $
               "no mock found for request: " <> BSL.toStrict req
-          Just (n, mock') -> put mock' >> f n
+          Just (n, mock') -> do
+            put mock'
+            either E.throwError f n
 
       SelectThrowError err -> E.throwError err
       SelectGetBackend f   -> f backend
 
 fakeInsert :: Storable backend k l a => [a] -> Mock (StoreMock backend) b
-           -> Maybe ([EntityID a], Mock (StoreMock backend) b)
+           -> Maybe ( Either SeakaleError [EntityID a]
+                    , Mock (StoreMock backend) b )
 fakeInsert vals = consumeMock $ \case
   MockInsert vals' ids -> do
     vals'' <- cast vals
@@ -170,7 +241,7 @@ fakeInsert vals = consumeMock $ \case
 fakeUpdate :: (Storable backend k l a, Typeable backend) => backend
            -> UpdateSetter backend a
            -> Condition backend a -> Mock (StoreMock backend) b
-           -> Maybe (Integer, Mock (StoreMock backend) b)
+           -> Maybe (Either SeakaleError Integer, Mock (StoreMock backend) b)
 fakeUpdate backend setter cond = consumeMock $ \case
   MockUpdate setter' cond' n -> do
     setter'' <- cast setter'
@@ -182,7 +253,7 @@ fakeUpdate backend setter cond = consumeMock $ \case
 
 fakeDelete :: Storable backend k l a => backend -> Condition backend a
            -> Mock (StoreMock backend) b
-           -> Maybe (Integer, Mock (StoreMock backend) b)
+           -> Maybe (Either SeakaleError Integer, Mock (StoreMock backend) b)
 fakeDelete backend cond = consumeMock $ \case
   MockDelete cond' n -> do
     cond'' <- cast cond'
@@ -227,7 +298,9 @@ runStoreT' b m =
                                          (map (toRow backend) dat)
             E.throwError $ BackendError $
               "no mock found for request: " <> BSL.toStrict req
-          Just (ids, mock') -> put mock' >> f ids
+          Just (ids, mock') -> do
+            put mock'
+            either E.throwError f ids
 
       Update setter cond f -> do
         mock <- get
@@ -236,7 +309,9 @@ runStoreT' b m =
             let req = buildUpdateRequest backend (relation backend) setter cond
             E.throwError $ BackendError $
               "no mock found for request: " <> BSL.toStrict req
-          Just (n, mock') -> put mock' >> f n
+          Just (n, mock') -> do
+            put mock'
+            either E.throwError f n
 
       Delete cond f -> do
         mock <- get
@@ -245,7 +320,9 @@ runStoreT' b m =
             let req = buildDeleteRequest backend (relation backend) cond
             E.throwError $ BackendError $
               "no mock found for request: " <> BSL.toStrict req
-          Just (n, mock') -> put mock' >> f n
+          Just (n, mock') -> do
+            put mock'
+            either E.throwError f n
 
     relationOfXs :: Storable backend k l a => backend -> [a]
                  -> Relation backend k l a
