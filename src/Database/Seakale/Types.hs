@@ -4,6 +4,7 @@ import           GHC.Exts
 
 import           Control.Monad.Trans
 
+import           Data.List
 import           Data.Monoid
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
@@ -70,9 +71,9 @@ qappendZero q1 q2 = case q1 of
 parenthesiseQuery :: Query n -> Query n
 parenthesiseQuery q = Plain "(" $ q `qappendZero` Plain ")" EmptyQuery
 
--- FIXME: we need a separator for the repeated part
 data RepeatQuery :: Nat -> Nat -> Nat -> * where
-  RepeatQuery :: Query k -> Query l -> Query i -> RepeatQuery k l i
+  RepeatQuery :: Query k -> Query l -> BSL.ByteString -> Query i
+              -> RepeatQuery k l i
 
 formatQuery :: Query n -> QueryData n -> BSL.ByteString
 formatQuery r d = BSL.fromChunks $ go r d
@@ -85,9 +86,9 @@ formatQuery r d = BSL.fromChunks $ go r d
 
 formatMany :: RepeatQuery k l i -> QueryData k -> QueryData i -> [QueryData l]
            -> BSL.ByteString
-formatMany (RepeatQuery before between after) beforeData afterData dat =
+formatMany (RepeatQuery before between sep after) beforeData afterData dat =
   formatQuery before beforeData
-  <> mconcat (map (formatQuery between) dat)
+  <> mconcat (intersperse sep (map (formatQuery between) dat))
   <> formatQuery after afterData
 
 newtype Field backend

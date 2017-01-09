@@ -345,7 +345,7 @@ buildInsertRequest Relation{..} dat =
                          <> BSL.toStrict (buildColumnList
                                          (vectorToList relationIDColumns)))
                         EmptyQuery
-        q = RepeatQuery before between after
+        q = RepeatQuery before between ", " after
 
     in formatMany q Nil Nil dat
 
