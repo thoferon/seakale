@@ -21,17 +21,16 @@ spec = do
                                 ++ comment1337Row ++ post1Row ++ user42Row
                              ]
                            )
-          (ents, mock') = run' mock $ do
-            let rel = (leftJoin
-                        (innerJoin_ (JLeft CommentPostID ==# JRight EntityID))
-                        relation
-                        (JLeft (JLeft CommentUserID) ==# JRight EntityID))
-            selectJoin rel
-                       (JLeft (JLeft CommentTitle) /=. "")
-                       (asc (JRight UserEmail))
+      eRes <- run mock $ do
+        let rel = (leftJoin
+                    (innerJoin_ (JLeft CommentPostID ==# JRight EntityID))
+                    relation
+                    (JLeft (JLeft CommentUserID) ==# JRight EntityID))
+        selectJoin rel
+                   (JLeft (JLeft CommentTitle) /=. "")
+                   (asc (JRight UserEmail))
 
-      mock' `shouldSatisfy` mockConsumed
-      ents `shouldBe` Right [Entity (LeftJoinID (InnerJoinID (CommentID 1337)
+      eRes `shouldBe` Right [Entity (LeftJoinID (InnerJoinID (CommentID 1337)
                                                              (PostID 1))
                                                 (Just (UserID 42)))
                                     (LeftJoin (InnerJoin comment1337 post1)

@@ -2,11 +2,15 @@
 
 module SpecHelpers
   ( module Test.Hspec
-  , module Database.Seakale.Request.Tests
+  , module Database.Seakale.Tests.Request
   , module SpecHelpers
   ) where
 
 import GHC.Generics
+
+import Control.Monad
+
+import Data.Either
 
 import Test.Hspec hiding (after)
 
@@ -14,16 +18,22 @@ import Database.Seakale.FromRow
 import Database.Seakale.PostgreSQL (PSQL(..), Request)
 import Database.Seakale.PostgreSQL.FromRow ()
 import Database.Seakale.PostgreSQL.ToRow ()
-import Database.Seakale.Request.Tests
+import Database.Seakale.Tests.Request
 import Database.Seakale.Store
 import Database.Seakale.ToRow
 import Database.Seakale.Types
 
-run' :: Mock PSQL a -> Request b -> (Either SeakaleError b, Mock PSQL a)
+run' :: Mock (RequestMock PSQL) a -> Request b
+     -> (Either SeakaleError b, Mock (RequestMock PSQL) a)
 run' = runRequest' PSQL
 
-run :: Mock PSQL a -> Request b -> Either SeakaleError b
-run = runRequest PSQL
+run :: Mock (RequestMock PSQL) a -> Request b -> IO (Either SeakaleError b)
+run mock req = do
+  let (eRes, mock') = run' mock req
+  when (isRight eRes) $
+    ("mockConsumed", mockConsumed mock')
+      `shouldBe` ("mockConsumed" :: String, True)
+  return eRes
 
 data User = User
   { userEmail    :: String

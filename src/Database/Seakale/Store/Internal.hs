@@ -338,9 +338,9 @@ buildInsertRequest Relation{..} dat =
                          <> " ("
                          <> BSL.toStrict (buildColumnList
                                           (vectorToList relationColumns))
-                         <> ") VALUES")
+                         <> ") VALUES ")
                         EmptyQuery
-        between = buildBetween " (" ")" relationColumns
+        between = buildBetween "(" ")" relationColumns
         after   = Plain (" RETURNING "
                          <> BSL.toStrict (buildColumnList
                                          (vectorToList relationIDColumns)))

@@ -341,12 +341,12 @@ listHelper op prop values =
 
 inList :: (Property backend a f, ToRow backend n b) => f backend n b -> [b]
        -> Condition backend a
-inList prop [] = Condition $ \prefix backend -> (Plain "1=0" EmptyQuery, Nil)
+inList _ [] = Condition $ \_ _ -> (Plain "1=0" EmptyQuery, Nil)
 inList prop values = listHelper "IN" prop values
 
 notInList :: (Property backend a f, ToRow backend n b) => f backend n b -> [b]
           -> Condition backend a
-notInList prop [] = Condition $ \prefix backend -> (Plain "1=1" EmptyQuery, Nil)
+notInList _ [] = Condition $ \_ _ -> (Plain "1=1" EmptyQuery, Nil)
 notInList prop values = listHelper "NOT IN" prop values
 
 groupBy :: Property backend a f => f backend n b -> SelectClauses backend a
