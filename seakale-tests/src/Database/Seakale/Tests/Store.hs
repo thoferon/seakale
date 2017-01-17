@@ -7,17 +7,24 @@ module Database.Seakale.Tests.Store
   , mockFailingCount
   , mockGetMany
   , mockGet
+  , mockFailingGetMany
+  , mockFailingGet
   , mockSelectJoin
+  , mockFailingSelectJoin
   , mockCountJoin
+  , mockFailingCountJoin
   , mockInsertMany
   , mockInsert
   , mockFailingInsertMany
+  , mockFailingInsert
   , mockUpdateMany
   , mockUpdate
   , mockFailingUpdateMany
+  , mockFailingUpdate
   , mockDeleteMany
   , mockDelete
   , mockFailingDeleteMany
+  , mockFailingDelete
   , runSelect
   , runSelectT
   , runStore
@@ -94,15 +101,35 @@ mockGet :: (Storable backend k l a, ToRow backend k (EntityID a))
         => EntityID a -> a -> Mock (StoreMock backend) ()
 mockGet i v = mockSelect (EntityID ==. i) (limit 1) [Entity i v]
 
+mockFailingGetMany :: (Storable backend k l a, ToRow backend k (EntityID a))
+                   => [EntityID a] -> SeakaleError
+                   -> Mock (StoreMock backend) ()
+mockFailingGetMany ids = mockFailingSelect (EntityID `inList` ids) mempty
+
+mockFailingGet :: (Storable backend k l a, ToRow backend k (EntityID a))
+               => EntityID a -> SeakaleError -> Mock (StoreMock backend) ()
+mockFailingGet i = mockFailingSelect (EntityID ==. i) (limit 1)
+
 mockSelectJoin :: Storable backend k l a => JoinRelation backend k l a
                -> Condition backend a -> SelectClauses backend a -> [Entity a]
                -> Mock (StoreMock backend) ()
 mockSelectJoin rel cond clauses ents =
   Action $ MockSelect rel cond clauses (Right ents)
 
+mockFailingSelectJoin :: Storable backend k l a => JoinRelation backend k l a
+                      -> Condition backend a -> SelectClauses backend a
+                      -> SeakaleError -> Mock (StoreMock backend) ()
+mockFailingSelectJoin rel cond clauses err =
+  Action $ MockSelect rel cond clauses (Left err)
+
 mockCountJoin :: Storable backend k l a => JoinRelation backend k l a
               -> Condition backend a -> Integer -> Mock (StoreMock backend) ()
 mockCountJoin rel cond n = Action $ MockCount rel cond (Right n)
+
+mockFailingCountJoin :: Storable backend k l a => JoinRelation backend k l a
+                     -> Condition backend a -> SeakaleError
+                     -> Mock (StoreMock backend) ()
+mockFailingCountJoin rel cond err = Action $ MockCount rel cond (Left err)
 
 mockInsertMany :: (Storable backend k l a, Eq a) => [a] -> [EntityID a]
                -> Mock (StoreMock backend) ()
@@ -115,6 +142,10 @@ mockInsert v i = mockInsertMany [v] [i]
 mockFailingInsertMany :: (Storable backend k l a, Eq a) => [a] -> SeakaleError
                       -> Mock (StoreMock backend) ()
 mockFailingInsertMany vals err = Action $ MockInsert vals (Left err)
+
+mockFailingInsert :: (Storable backend k l a, Eq a) => a -> SeakaleError
+                  -> Mock (StoreMock backend) ()
+mockFailingInsert val = mockFailingInsertMany [val]
 
 mockUpdateMany :: Storable backend k l a => UpdateSetter backend a
                -> Condition backend a -> Integer
@@ -132,6 +163,11 @@ mockFailingUpdateMany :: Storable backend k l a => UpdateSetter backend a
 mockFailingUpdateMany setter cond err =
   Action $ MockUpdate setter cond (Left err)
 
+mockFailingUpdate :: (Storable backend k l a, ToRow backend k (EntityID a))
+                  => EntityID a -> UpdateSetter backend a -> SeakaleError
+                  -> Mock (StoreMock backend) ()
+mockFailingUpdate i setter = mockFailingUpdateMany setter (EntityID ==. i)
+
 mockDeleteMany :: Storable backend k l a => Condition backend a -> Integer
                -> Mock (StoreMock backend) ()
 mockDeleteMany cond n = Action $ MockDelete cond (Right n)
@@ -143,6 +179,10 @@ mockDelete i = mockDeleteMany (EntityID ==. i) 1
 mockFailingDeleteMany :: Storable backend k l a => Condition backend a
                       -> SeakaleError -> Mock (StoreMock backend) ()
 mockFailingDeleteMany cond err = Action $ MockDelete cond (Left err)
+
+mockFailingDelete :: (Storable backend k l a, ToRow backend k (EntityID a))
+                  => EntityID a -> SeakaleError -> Mock (StoreMock backend) ()
+mockFailingDelete i = mockFailingDeleteMany (EntityID ==. i)
 
 fakeSelect :: Storable backend k l a => backend -> Relation backend k l a
            -> Condition backend a -> SelectClauses backend a
