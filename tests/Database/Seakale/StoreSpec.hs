@@ -88,6 +88,13 @@ spec = do
       run mock (update (UserID 42) (UserPassword =. "secret"))
         `shouldReturn` Right ()
 
+    it "throws EntityNotFoundError if no row was modified" $ do
+      let mock = mockExecute "UPDATE users SET password = 'secret'\
+                             \ WHERE id = 42" 0
+
+      run mock (update (UserID 42) (UserPassword =. "secret"))
+        `shouldReturn` Left EntityNotFoundError
+
   describe "deleteMany" $ do
     it "deletes rows matching some condition" $ do
       let mock = mockExecute "DELETE FROM users WHERE password = 'secret'" 2
@@ -97,3 +104,7 @@ spec = do
     it "deletes a row given its ID" $ do
       let mock = mockExecute "DELETE FROM users WHERE id = 42" 1
       run mock (delete (UserID 42)) `shouldReturn` Right ()
+
+    it "throws EntityNotFoundError if no row was deleted" $ do
+      let mock = mockExecute "DELETE FROM users WHERE id = 42" 0
+      run mock (delete (UserID 42)) `shouldReturn` Left EntityNotFoundError

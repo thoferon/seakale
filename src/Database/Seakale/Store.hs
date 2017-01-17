@@ -155,7 +155,9 @@ updateMany setter cond = I.update setter cond
 update :: ( MonadStore backend m, Storable backend k l a
           , ToRow backend k (EntityID a) )
        => EntityID a -> UpdateSetter backend a -> m ()
-update i setter = void $ updateMany setter $ EntityID ==. i
+update i setter = do
+  n <- updateMany setter $ EntityID ==. i
+  unless (n == 1) $ throwSeakaleError EntityNotFoundError
 
 -- | Delete rows matching the given conditions.
 deleteMany :: forall backend m k l a.
@@ -166,7 +168,9 @@ deleteMany = I.delete
 -- | Delete the row with the given ID.
 delete :: ( MonadStore backend m, Storable backend k l a
           , ToRow backend k (EntityID a) ) => EntityID a -> m ()
-delete i = void $ deleteMany $ EntityID ==. i
+delete i = do
+  n <- deleteMany $ EntityID ==. i
+  unless (n == 1) $ throwSeakaleError EntityNotFoundError
 
 -- | Specify that the type @f@ specify properties of @a@. These values of type
 -- @f@ can then be used to create 'Condition's on type @a@. The type parameters
