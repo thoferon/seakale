@@ -2,10 +2,12 @@ module Database.Seakale.Types where
 
 import           GHC.Exts
 
-import           Control.Monad.Trans
+import           Control.Monad.Except
+import           Control.Monad.Reader
+import           Control.Monad.State
+import           Control.Monad.Writer
 
 import           Data.List
-import           Data.Monoid
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 
@@ -18,12 +20,40 @@ data SeakaleError
 class Monad m => MonadSeakaleBase backend m | m -> backend where
   getBackend        :: m backend
   throwSeakaleError :: SeakaleError -> m a
+  catchSeakaleError :: m a -> (SeakaleError -> m a) -> m a
 
-instance {-# OVERLAPPABLE #-} ( MonadSeakaleBase backend m, MonadTrans t
-                              , Monad (t m) )
-  => MonadSeakaleBase backend (t m) where
-  throwSeakaleError = lift . throwSeakaleError
+instance MonadSeakaleBase backend m
+  => MonadSeakaleBase backend (ExceptT e m) where
   getBackend        = lift getBackend
+  throwSeakaleError = lift . throwSeakaleError
+  catchSeakaleError f handler = ExceptT $
+    (catchSeakaleError (runExceptT f) (runExceptT . handler))
+
+instance MonadSeakaleBase backend m
+  => MonadSeakaleBase backend (ReaderT r m) where
+  getBackend        = lift getBackend
+  throwSeakaleError = lift . throwSeakaleError
+  catchSeakaleError f handler = do
+    r <- ask
+    lift $ catchSeakaleError (runReaderT f r) (flip runReaderT r . handler)
+
+instance MonadSeakaleBase backend m
+  => MonadSeakaleBase backend (StateT s m) where
+  getBackend        = lift getBackend
+  throwSeakaleError = lift . throwSeakaleError
+  catchSeakaleError f handler = do
+    s <- get
+    (x, s') <- lift $
+      catchSeakaleError (runStateT f s) (flip runStateT s . handler)
+    put s'
+    return x
+
+instance (Monoid w, MonadSeakaleBase backend m)
+  => MonadSeakaleBase backend (WriterT w m) where
+  getBackend        = lift getBackend
+  throwSeakaleError = lift . throwSeakaleError
+  catchSeakaleError f handler =
+    lift (catchSeakaleError (runWriterT f) (runWriterT . handler)) >>= writer
 
 data Nat = O | S Nat
 

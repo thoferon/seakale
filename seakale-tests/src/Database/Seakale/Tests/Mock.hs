@@ -63,7 +63,7 @@ instance Applicative (Mock sub) where
 
 instance Monad (Mock sub) where
   None mx >>= f = f $ fromMaybe notMonadError mx
-  mx >>= f = And (castMock mx) (f notMonadError)
+  mx >>= f = After (castMock mx) (f notMonadError)
 
 instance Alternative (Mock sub) where
   empty = None Nothing

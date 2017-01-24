@@ -207,15 +207,17 @@ data SelectF backend a
               (SelectClauses backend b) ([Entity b] -> a)
   | forall k l b. Storable backend k l b
     => Count (Relation backend k l b) (Condition backend b) (Integer -> a)
-  | SelectThrowError SeakaleError
   | SelectGetBackend (backend -> a)
+  | SelectThrowError SeakaleError
+  | SelectCatchError a (SeakaleError -> a)
 
 instance Functor (SelectF backend) where
   fmap f = \case
-    Select rel cond clauses g -> Select rel cond clauses (f . g)
-    Count  rel cond         g -> Count  rel cond         (f . g)
-    SelectThrowError err      -> SelectThrowError err
-    SelectGetBackend g        -> SelectGetBackend (f . g)
+    Select rel cond clauses g       -> Select rel cond clauses (f . g)
+    Count  rel cond         g       -> Count  rel cond         (f . g)
+    SelectGetBackend g              -> SelectGetBackend (f . g)
+    SelectThrowError err            -> SelectThrowError err
+    SelectCatchError action handler -> SelectCatchError (f action) (f . handler)
 
 type SelectT backend = FreeT (SelectF backend)
 type Select  backend = SelectT backend Identity
@@ -228,15 +230,17 @@ class MonadSeakaleBase backend m => MonadSelect backend m where
         -> Condition backend a -> m Integer
 
 instance Monad m => MonadSeakaleBase backend (FreeT (SelectF backend) m) where
-  throwSeakaleError = liftF . SelectThrowError
   getBackend        = liftF $ SelectGetBackend id
+  throwSeakaleError = liftF . SelectThrowError
+  catchSeakaleError action handler =
+    FreeT $ return $ Free $ SelectCatchError action handler
 
 instance Monad m => MonadSelect backend (FreeT (SelectF backend) m) where
   select rel cond clauses = liftF $ Select rel cond clauses id
   count  rel cond         = liftF $ Count  rel cond         id
 
 instance {-# OVERLAPPABLE #-} ( MonadSelect backend m, MonadTrans t
-                              , Monad (t m) )
+                              , MonadSeakaleBase backend (t m) )
   => MonadSelect backend (t m) where
   select rel cond clauses = lift $ select rel cond clauses
   count  rel cond         = lift $ count  rel cond
@@ -269,8 +273,9 @@ runSelectT = iterTM interpreter
           Right _   ->
             throwSeakaleError $ RowParseError "Non-unique response to count"
 
-      SelectThrowError err -> throwSeakaleError err
-      SelectGetBackend f   -> getBackend >>= f
+      SelectGetBackend f              -> getBackend >>= f
+      SelectThrowError err            -> throwSeakaleError err
+      SelectCatchError action handler -> catchSeakaleError action handler
 
 runSelect :: Select backend a -> Request backend a
 runSelect = runSelectT
@@ -313,6 +318,15 @@ class MonadSelect backend m => MonadStore backend m where
          -> Condition backend a -> m Integer
   delete :: Storable backend k l a => Condition backend a -> m Integer
 
+instance MonadSeakaleBase backend m
+  => MonadSeakaleBase backend (FreeT (StoreF backend) m) where
+  getBackend        = lift getBackend
+  throwSeakaleError = lift . throwSeakaleError
+
+  FreeT m `catchSeakaleError` handler = FreeT $
+    liftM (fmap (`catchSeakaleError` handler)) m
+      `catchSeakaleError` (runFreeT . handler)
+
 instance MonadSelect backend m
   => MonadStore backend (FreeT (StoreF backend) m) where
   insert dat         = liftF $ Insert dat         id
@@ -320,7 +334,7 @@ instance MonadSelect backend m
   delete        cond = liftF $ Delete        cond id
 
 instance {-# OVERLAPPABLE #-} ( MonadStore backend m, MonadTrans t
-                              , Monad (t m) )
+                              , MonadSeakaleBase backend (t m) )
   => MonadStore backend (t m) where
   insert dat         = lift $ insert dat
   update setter cond = lift $ update setter cond

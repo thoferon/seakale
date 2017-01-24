@@ -95,8 +95,9 @@ runRequestT' b m =
             "no mock found for Execute on " <> BSL.toStrict req
           Just (res, mock') -> put mock' >> f res
 
-      ThrowError err -> E.throwError err
-      GetBackend f -> f backend
+      GetBackend f              -> f backend
+      ThrowError err            -> E.throwError err
+      CatchError action handler -> E.catchError action handler
 
 runRequest' :: backend -> Mock (RequestMock backend) b -> Request backend a
             -> (Either SeakaleError a, Mock (RequestMock backend) b)

@@ -264,8 +264,9 @@ runSelectHelper b = iterT (interpreter b) . hoistFreeT (lift . lift)
             put mock'
             either E.throwError f n
 
-      SelectThrowError err -> E.throwError err
-      SelectGetBackend f   -> f backend
+      SelectGetBackend f              -> f backend
+      SelectThrowError err            -> E.throwError err
+      SelectCatchError action handler -> E.catchError action handler
 
 fakeInsert :: Storable backend k l a => [a] -> Mock (StoreMock backend) b
            -> Maybe ( Either SeakaleError [EntityID a]
