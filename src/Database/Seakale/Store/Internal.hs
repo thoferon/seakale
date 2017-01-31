@@ -66,6 +66,9 @@ instance IsString Column where
 instance Eq Column where
   (==) col1 col2 = unColumn col1 "" == unColumn col2 ""
 
+instance Show Column where
+  show = show . flip unColumn ""
+
 class (Typeable backend, Typeable k, Typeable l, Typeable a)
   => Storable backend (k :: Nat) (l :: Nat) a | a -> k, a -> l where
   data EntityID a :: *
@@ -120,9 +123,11 @@ buildCondition' op vec1 vec2 =
           $ zip (vectorToList (vec1 backend)) (vectorToList (vec2 backend))
     in (Plain q EmptyQuery, Nil)
 
+data Order = Asc | Desc deriving (Show, Eq)
+
 data SelectClauses backend a = SelectClauses
   { selectGroupBy :: backend -> [Column]
-  , selectOrderBy :: backend -> (Bool, [Column])
+  , selectOrderBy :: backend -> [(Column, Order)]
   , selectLimit   :: Maybe Int
   , selectOffset  :: Maybe Int
   }
@@ -130,7 +135,7 @@ data SelectClauses backend a = SelectClauses
 instance Monoid (SelectClauses backend a) where
   mempty = SelectClauses
     { selectGroupBy = const []
-    , selectOrderBy = const (False, [])
+    , selectOrderBy = const []
     , selectLimit   = Nothing
     , selectOffset  = Nothing
     }
@@ -138,9 +143,11 @@ instance Monoid (SelectClauses backend a) where
     { selectGroupBy = \backend ->
         selectGroupBy sc1 backend ++ selectGroupBy sc2 backend
     , selectOrderBy = \backend ->
-        let (desc1, cols1) = selectOrderBy sc1 backend
-            (desc2, cols2) = selectOrderBy sc2 backend
-        in (desc1 || desc2, cols1 ++ cols2)
+        let pairs1  = selectOrderBy sc1 backend
+            pairs2  = selectOrderBy sc2 backend
+            cols2   = map fst pairs2
+            pairs1' = filter ((`notElem` cols2) . fst) pairs1
+        in pairs1' ++ pairs2
     , selectLimit  = maybe (selectLimit sc1) Just (selectLimit sc2)
     , selectOffset = maybe (selectOffset sc1) Just (selectOffset sc2)
     }
@@ -176,12 +183,13 @@ buildSelectClauses SelectClauses{..} backend = mconcat
   [ if null (selectGroupBy backend)
       then ""
       else " GROUP BY " <> buildColumnList (selectGroupBy backend)
-  , let (descFlag, cols) = selectOrderBy backend
-    in if null cols
+  , let build (col, Asc)  = unColumn col "" <> " ASC"
+        build (col, Desc) = unColumn col "" <> " DESC"
+        pairs = selectOrderBy backend
+        list  = BSL.fromChunks $ intersperse ", " $ map build pairs
+    in if null pairs
          then ""
-         else " ORDER BY "
-              <> buildColumnList cols
-              <> if descFlag then " DESC" else " ASC"
+         else " ORDER BY " <> list
   , maybe "" (\n -> " LIMIT " <> BSL.pack (show n)) selectLimit
   , maybe "" (\n -> " OFFSET " <> BSL.pack (show n)) selectOffset
   ]

@@ -1,5 +1,5 @@
 # Revision history for seakale-postgresql
 
-## 0.9.0 -- 2016-11-17
+## 0.1.0.0 -- 2017-01-31
 
 * First version.

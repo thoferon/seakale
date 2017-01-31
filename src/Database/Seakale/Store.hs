@@ -358,12 +358,12 @@ groupBy prop = mempty { selectGroupBy = vectorToList . flip toColumns prop }
 
 asc :: Property backend a f => f backend n b -> SelectClauses backend a
 asc prop =
-  let f backend = (False, vectorToList (toColumns backend prop))
+  let f backend = map (,Asc) $ vectorToList (toColumns backend prop)
   in mempty { selectOrderBy = f }
 
 desc :: Property backend a f => f backend n b -> SelectClauses backend a
 desc prop =
-  let f backend = (True, vectorToList (toColumns backend prop))
+  let f backend = map (,Desc) $ vectorToList (toColumns backend prop)
   in mempty { selectOrderBy = f }
 
 limit :: Int -> SelectClauses backend a
