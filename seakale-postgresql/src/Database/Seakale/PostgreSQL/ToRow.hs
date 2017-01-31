@@ -21,7 +21,7 @@ instance ToRow PSQL One Bool where
     False -> Cons "'f'" Nil
 
 instance ToRow PSQL One UTCTime where
-  toRow backend = toRow backend . formatTime defaultTimeLocale "%F %T%Q"
+  toRow backend = toRow backend . formatTime defaultTimeLocale "%F %T%QZ"
 
 instance ToRow PSQL One String where
   toRow backend = toRow backend . BS.pack
