@@ -18,6 +18,7 @@ module Database.Seakale.PostgreSQL
   , runStoreT
   , HasConnection(..)
   , PSQL(..)
+  , defaultPSQL
   , SeakaleError(..)
   , T.Query(..) -- prefixed to export EmptyQuery
   , Field(..)
@@ -51,6 +52,8 @@ import           Data.Monoid
 import           Data.Word
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
+
+import           System.IO
 
 import           Database.PostgreSQL.LibPQ hiding (Row, status)
 
@@ -115,7 +118,10 @@ instance HasConnection m => HasConnection (StateT s m) where
 
 type TypeCache = [(Oid, BS.ByteString)]
 
-data PSQL = PSQL
+data PSQL = PSQL { psqlLogQueries :: Bool }
+
+defaultPSQL :: PSQL
+defaultPSQL = PSQL False
 
 instance Backend PSQL where
   type ColumnType PSQL = BS.ByteString
@@ -125,20 +131,20 @@ instance Backend PSQL where
                              , MonadIO m
                              )
 
-  runQuery   _ = runExceptT . runQuery
-  runExecute _ = runExceptT . runExecute
+  runQuery   backend = runExceptT . runQuery   backend
+  runExecute backend = runExceptT . runExecute backend
 
 type RequestT = I.RequestT PSQL
 type Request  = I.Request  PSQL
 
-runRequestT :: (HasConnection m, MonadIO m) => RequestT m a
+runRequestT :: (HasConnection m, MonadIO m) => PSQL -> RequestT m a
             -> m (Either SeakaleError a)
-runRequestT =
-  fmap fst . flip runStateT [] . I.runRequestT PSQL . hoistFreeT lift
+runRequestT backend =
+  fmap fst . flip runStateT [] . I.runRequestT backend . hoistFreeT lift
 
-runRequest :: (HasConnection m, MonadIO m) => Request a
+runRequest :: (HasConnection m, MonadIO m) => PSQL -> Request a
            -> m (Either SeakaleError a)
-runRequest = runRequestT . hoistFreeT (return . runIdentity)
+runRequest backend = runRequestT backend . hoistFreeT (return . runIdentity)
 
 type SelectT = I.SelectT PSQL
 type Select  = I.Select  PSQL
@@ -158,10 +164,11 @@ runStoreT = I.runStoreT
 runStore :: Store a -> Request a
 runStore = I.runStore
 
-runQuery :: MonadBackend PSQL m => BSL.ByteString
+runQuery :: MonadBackend PSQL m => PSQL -> BSL.ByteString
          -> ExceptT BS.ByteString m ([ColumnInfo PSQL], [Row PSQL])
-runQuery lazyReq = do
-  let req = mconcat $ BSL.toChunks lazyReq
+runQuery PSQL{..} lazyReq = do
+  let req = BSL.toStrict lazyReq
+  when psqlLogQueries $ liftIO $ BS.hPutStrLn stderr $ "runQuery: " <> req
   res <- exec' req
 
   let _until i = takeWhile (/= i) $ iterate (+1) 0
@@ -185,10 +192,11 @@ runQuery lazyReq = do
 
   return (cols, rows)
 
-runExecute :: MonadBackend PSQL m => BSL.ByteString
+runExecute :: MonadBackend PSQL m => PSQL -> BSL.ByteString
            -> ExceptT BS.ByteString m Integer
-runExecute lazyReq = do
-  let req = mconcat $ BSL.toChunks lazyReq
+runExecute PSQL{..} lazyReq = do
+  let req = BSL.toStrict lazyReq
+  when psqlLogQueries $ liftIO $ BS.hPutStrLn stderr $ "runExecute: " <> req
   res <- exec' req
 
   mBS <- liftIO $ cmdTuples res

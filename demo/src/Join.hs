@@ -57,7 +57,7 @@ dbProg =
 
 main :: IO ()
 main = withConn $ \conn -> do
-  eRes <- runReaderT (runRequest (runSelectT dbProg)) conn
+  eRes <- runReaderT (runRequest defaultPSQL (runSelectT dbProg)) conn
   case eRes of
     Left err -> hPutStrLn stderr $ "Error: " ++ show err
     Right res ->

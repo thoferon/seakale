@@ -1,5 +1,5 @@
 name:                  seakale-postgresql
-version:               0.1.0.0
+version:               0.1.1.0
 synopsis:              PostgreSQL backend for Seakale
 description:           This package provides a way to run code written with Seakale with a PostgreSQL database.
 license:               BSD3
@@ -14,7 +14,7 @@ cabal-version:         >=1.10
 source-repository head
   type:                darcs
   location:            http://darcs.redspline.com/seakale
-  tag:                 0.1.0.0
+  tag:                 seakale-postgresql-0.1.1.0
 
 library
   ghc-options:         -Wall
@@ -37,7 +37,7 @@ library
                        Database.Seakale.PostgreSQL.ToRow
 
   build-depends:       base >=4.8 && <4.10
-                     , seakale
+                     , seakale ==0.1.*
                      , postgresql-libpq
                      , bytestring
                      , mtl

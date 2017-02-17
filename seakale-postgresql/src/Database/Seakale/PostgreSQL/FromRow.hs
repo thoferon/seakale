@@ -39,14 +39,16 @@ instance FromRow PSQL One String where
 instance {-# OVERLAPPABLE #-} FromRow PSQL One a => FromRow PSQL One [a] where
   fromRow = pconsume `pbind` \(col@ColumnInfo{..}, Field{..}) ->
     case (BS.splitAt 1 colInfoType, fieldValue) of
-      (("_", typ), Just bs) -> arrayParser (col { colInfoType = typ }) bs
+      (("_", typ), Just bs) ->
+        pbackend `pbind` \backend ->
+        arrayParser backend (col { colInfoType = typ }) bs
       (_, Just _) -> pfail $ "invalid type for list: " ++ BS.unpack colInfoType
       (_, Nothing) -> pfail "unexpected NULL for list"
 
 -- FIXME: What about \n for example?
-arrayParser :: FromRow PSQL One a => ColumnInfo PSQL -> BS.ByteString
+arrayParser :: FromRow PSQL One a => PSQL -> ColumnInfo PSQL -> BS.ByteString
             -> RowParser PSQL Zero [a]
-arrayParser col = either pfail preturn . go
+arrayParser backend col = either pfail preturn . go
   where
     go :: FromRow PSQL One a => BS.ByteString -> Either String [a]
     go bs = case BS.splitAt 1 bs of
@@ -59,7 +61,7 @@ arrayParser col = either pfail preturn . go
     readValues f bs = do
       (valBS, bs') <- readByteString bs
       let mValBS = if valBS == "NULL" then Nothing else Just valBS
-      val <- parseRow fromRow PSQL [col] [Field mValBS]
+      val <- parseRow fromRow backend [col] [Field mValBS]
       case BS.splitAt 1 bs' of
         (",", bs'') -> readValues (f . (val :)) bs''
         ("}", "")   -> return $! f [val]

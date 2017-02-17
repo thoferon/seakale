@@ -36,7 +36,7 @@ library
                        Database.Seakale.Tests.Store
 
   build-depends:       base >=4.8 && <4.10
-                     , seakale
+                     , seakale ==0.1.*
                      , mtl
                      , bytestring
                      , free

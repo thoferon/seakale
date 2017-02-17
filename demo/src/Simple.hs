@@ -27,7 +27,7 @@ dbProg = do
 
 main :: IO ()
 main = withConn $ \conn -> do
-  eRes <- runReaderT (runRequest dbProg) conn
+  eRes <- runReaderT (runRequest defaultPSQL dbProg) conn
   case eRes of
     Left err -> hPutStrLn stderr $ "Error: " ++ show err
     Right res -> forM_ res $ \UserTable{..} ->

@@ -15,7 +15,7 @@ import Data.Either
 import Test.Hspec hiding (after)
 
 import Database.Seakale.FromRow
-import Database.Seakale.PostgreSQL (PSQL(..), Request)
+import Database.Seakale.PostgreSQL (defaultPSQL, PSQL, Request)
 import Database.Seakale.PostgreSQL.FromRow ()
 import Database.Seakale.PostgreSQL.ToRow ()
 import Database.Seakale.Tests.Request
@@ -25,7 +25,7 @@ import Database.Seakale.Types
 
 run' :: Mock (RequestMock PSQL) a -> Request b
      -> (Either SeakaleError b, Mock (RequestMock PSQL) a)
-run' = runRequest' PSQL
+run' = runRequest' defaultPSQL
 
 run :: Mock (RequestMock PSQL) a -> Request b -> IO (Either SeakaleError b)
 run mock req = do
