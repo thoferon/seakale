@@ -210,32 +210,32 @@ instance Property backend a (EntityIDProperty a) where
 (==.) :: (Property backend a f, ToRow backend n b) => f backend n b -> b
       -> Condition backend a
 (==.) prop vals =
-  buildCondition "=" (flip toColumns prop) (flip toRow vals)
+  buildCondition "=" "IS" (flip toColumns prop) (flip toRow vals)
 
 (/=.) :: (Property backend a f, ToRow backend n b) => f backend n b -> b
       -> Condition backend a
 (/=.) prop vals =
-  buildCondition "<>" (flip toColumns prop) (flip toRow vals)
+  buildCondition "<>" "IS NOT" (flip toColumns prop) (flip toRow vals)
 
 (<=.) :: (Property backend a f, ToRow backend n b) => f backend n b -> b
       -> Condition backend a
 (<=.) prop vals =
-  buildCondition "<=" (flip toColumns prop) (flip toRow vals)
+  buildCondition "<=" "<=" (flip toColumns prop) (flip toRow vals)
 
 (<.) :: (Property backend a f, ToRow backend n b) => f backend n b -> b
      -> Condition backend a
 (<.) prop vals =
-  buildCondition "<" (flip toColumns prop) (flip toRow vals)
+  buildCondition "<" "<" (flip toColumns prop) (flip toRow vals)
 
 (>=.) :: (Property backend a f, ToRow backend n b) => f backend n b -> b
       -> Condition backend a
 (>=.) prop vals =
-  buildCondition ">=" (flip toColumns prop) (flip toRow vals)
+  buildCondition ">=" ">=" (flip toColumns prop) (flip toRow vals)
 
 (>.) :: (Property backend a f, ToRow backend n b) => f backend n b -> b
      -> Condition backend a
 (>.) cols vals =
-  buildCondition ">" (flip toColumns cols) (flip toRow vals)
+  buildCondition ">" ">" (flip toColumns cols) (flip toRow vals)
 
 (==#) :: (Property backend a f, Property backend a g)
       => f backend n b -> g backend n b -> Condition backend a
@@ -328,9 +328,10 @@ listHelper op prop values =
   let step value (suffix, (Condition f)) =
         (", ",) $ Condition $ \prefix backend ->
           let (req, dat) = f prefix backend
-              valueList = mconcat $ intersperse ", " $ vectorToList $
-                            toRow backend value
-          in (Hole (Plain suffix req), Cons ("(" <> valueList <> ")") dat)
+              valueList = mconcat $ intersperse ", " $ map (fromMaybe "NULL") $
+                            vectorToList $ toRow backend value
+          in ( Hole (Plain suffix req)
+             , Cons (Just ("(" <> valueList <> ")")) dat )
 
       (_, cond) = foldr step ("", mempty) values
 
@@ -375,4 +376,4 @@ offset n = mempty { selectOffset = Just n }
 (=.) :: (Property backend a f, ToRow backend n b)
      => f backend n b -> b -> UpdateSetter backend a
 (=.) col value = UpdateSetter $ \backend ->
-  vzip (toColumns backend col) (toRow backend value)
+  vzip (toColumns backend col) (fmap (fromMaybe "NULL") $ toRow backend value)

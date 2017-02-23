@@ -106,7 +106,7 @@ instance (Backend backend, NTimes (Vector n), ToRow backend n a)
   data ValueProxy con (K1 i a) b = ProxyConst (Maybe a)
   toValueProxy _ _ = ProxyConst . fmap unK1
   gtoRow backend _ = (,Nothing) . \case
-    ProxyConst Nothing  -> ntimes "NULL"
+    ProxyConst Nothing  -> ntimes Nothing
     ProxyConst (Just x) -> toRow backend x
 
 instance (Constructor c, GToRow backend con n a)
@@ -136,10 +136,10 @@ instance GToRow backend con n a => GToRow backend con n (M1 S c a) where
 instance ToRow backend Zero ()
 
 instance ToRow backend One Null where
-  toRow _ Null = ["NULL"]
+  toRow _ Null = [Nothing]
 
-formatString :: BS.ByteString -> BS.ByteString
-formatString str = "'" <> escapeQuotes "" str <> "'"
+formatString :: BS.ByteString -> Maybe BS.ByteString
+formatString str = Just $ "'" <> escapeQuotes "" str <> "'"
   where
     escapeQuotes :: BS.ByteString -> BS.ByteString -> BS.ByteString
     escapeQuotes _ "" = ""
@@ -160,33 +160,33 @@ instance ToRow backend One TL.Text where
   toRow _ s = [formatString $ TE.encodeUtf8 $ TL.toStrict s]
 
 instance ToRow backend One Int where
-  toRow _ n = [BS.pack $ show n]
+  toRow _ n = [Just $ BS.pack $ show n]
 
 instance ToRow backend One Int8 where
-  toRow _ n = [BS.pack $ show n]
+  toRow _ n = [Just $ BS.pack $ show n]
 
 instance ToRow backend One Int16 where
-  toRow _ n = [BS.pack $ show n]
+  toRow _ n = [Just $ BS.pack $ show n]
 
 instance ToRow backend One Int32 where
-  toRow _ n = [BS.pack $ show n]
+  toRow _ n = [Just $ BS.pack $ show n]
 
 instance ToRow backend One Int64 where
-  toRow _ n = [BS.pack $ show n]
+  toRow _ n = [Just $ BS.pack $ show n]
 
 instance ToRow backend One Integer where
-  toRow _ n = [BS.pack $ show n]
+  toRow _ n = [Just $ BS.pack $ show n]
 
 instance ToRow backend One Double where
-  toRow _ n = [BS.pack $ show n]
+  toRow _ n = [Just $ BS.pack $ show n]
 
 instance ToRow backend One Float where
-  toRow _ n = [BS.pack $ show n]
+  toRow _ n = [Just $ BS.pack $ show n]
 
 instance (NTimes (Vector n), Backend backend, ToRow backend n a)
   => ToRow backend n (Maybe a) where
   toRow backend = \case
-    Nothing -> ntimes "NULL"
+    Nothing -> ntimes Nothing
     Just x  -> toRow backend x
 
 instance ( NTimes (Vector k), NTimes (Vector l), Backend backend

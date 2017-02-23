@@ -6,6 +6,7 @@ module Database.Seakale.PostgreSQL.ToRow
   ) where
 
 import           Data.List
+import           Data.Maybe
 import           Data.Monoid
 import           Data.Time
 import qualified Data.ByteString.Char8 as BS
@@ -17,8 +18,8 @@ import           Database.Seakale.PostgreSQL
 
 instance ToRow PSQL One Bool where
   toRow _ = \case
-    True  -> Cons "'t'" Nil
-    False -> Cons "'f'" Nil
+    True  -> Cons (Just "'t'") Nil
+    False -> Cons (Just "'f'") Nil
 
 instance ToRow PSQL One UTCTime where
   toRow backend = toRow backend . formatTime defaultTimeLocale "%F %T%QZ"
@@ -28,9 +29,9 @@ instance ToRow PSQL One String where
 
 instance {-# OVERLAPPABLE #-} ToRow PSQL One a => ToRow PSQL One [a] where
   toRow backend =
-    singleton . ("'{" <>) . (<> "}'") . mconcat . intersperse ","
+    singleton . Just . ("'{" <>) . (<> "}'") . mconcat . intersperse ","
     . map (("\"" <>) . (<> "\"") . escapeByteString)
-    . (>>= vectorToList . toRow backend)
+    . (>>= map (fromMaybe "NULL") . vectorToList . toRow backend)
 
 escapeByteString :: BS.ByteString -> BS.ByteString
 escapeByteString bs =

@@ -8,6 +8,7 @@ import           Control.Monad.State
 import           Control.Monad.Writer
 
 import           Data.List
+import           Data.Maybe
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 
@@ -111,7 +112,7 @@ formatQuery r d = BSL.fromChunks $ go r d
     go :: Query n -> QueryData n -> [BS.ByteString]
     go req dat = case (req, dat) of
       (Plain bs req', _) -> bs : go req' dat
-      (Hole req', Cons bs dat') -> bs : go req' dat'
+      (Hole req', Cons mBS dat') -> fromMaybe "NULL" mBS : go req' dat'
       (EmptyQuery, Nil) -> []
 
 formatMany :: RepeatQuery k l i -> QueryData k -> QueryData i -> [QueryData l]
@@ -144,7 +145,7 @@ data ColumnInfo backend = ColumnInfo
 deriving instance Show (ColumnType backend) => Show (ColumnInfo backend)
 deriving instance Eq   (ColumnType backend) => Eq   (ColumnInfo backend)
 
-type QueryData n = Vector n BS.ByteString
+type QueryData n = Vector n (Maybe BS.ByteString)
 
 data Vector :: Nat -> * -> * where
   Cons :: a -> Vector n a -> Vector ('S n) a

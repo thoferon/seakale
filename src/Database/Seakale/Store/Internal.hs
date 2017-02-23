@@ -100,16 +100,21 @@ combineConditions op (Condition f) (Condition g) =
                    `qappend` Plain (" " <> op <> " ") (parenthesiseQuery q2)
     in (q, qdat1 `vappend` qdat2)
 
-buildCondition :: BS.ByteString -> (backend -> Vector n Column)
+buildCondition :: BS.ByteString -> BS.ByteString -> (backend -> Vector n Column)
                -> (backend -> QueryData n) -> Condition backend a
-buildCondition op vec dat =
+buildCondition op op' vec dat =
     Condition $ \prefix backend ->
-      (go id (fmap (($ prefix) . unColumn) (vec backend)), dat backend)
+      let dat' = dat backend
+          cols = fmap (($ prefix) . unColumn) (vec backend)
+          req  = go id cols dat'
+      in (req, dat')
   where
-    go :: (forall m. Query m -> Query m) -> Vector n BS.ByteString -> Query n
-    go _ Nil = EmptyQuery
-    go f (Cons x xs) =
-      f $ Plain (x <> " " <> op <> " ") $ Hole $ go (Plain " AND ") xs
+    go :: (forall m. Query m -> Query m) -> Vector n BS.ByteString
+       -> QueryData n -> Query n
+    go _ Nil Nil = EmptyQuery
+    go f (Cons x xs) (Cons mBS dat') =
+      f $ Plain (x <> " " <> maybe op' (const op) mBS <> " ") $
+            Hole $ go (Plain " AND ") xs dat'
 
 buildCondition' :: BS.ByteString
                 -> (backend -> Vector n Column) -> (backend -> Vector n Column)
