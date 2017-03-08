@@ -1,5 +1,5 @@
 name:                  seakale-tests
-version:               0.1.0.1
+version:               0.1.0.2
 synopsis:              Helpers to test code using Seakale
 description:           This package provides a way to run code written with Seakale with a fake database using mocks.
 license:               BSD3
@@ -14,7 +14,7 @@ cabal-version:         >=1.10
 source-repository head
   type:                darcs
   location:            http://darcs.redspline.com/seakale
-  tag:                 seakale-tests-0.1.0.1
+  tag:                 seakale-tests-0.1.0.2
 
 library
   ghc-options:         -Wall
@@ -36,7 +36,7 @@ library
                        Database.Seakale.Tests.Store
 
   build-depends:       base >=4.8 && <4.10
-                     , seakale ==0.1.* || ==0.2.*
+                     , seakale <=0.2.*
                      , mtl
                      , bytestring
                      , free

@@ -1,5 +1,6 @@
 module Database.Seakale.Tests.Store
   ( StoreMock
+  -- * Mocking the database
   , mockSelect
   , mockSelect_
   , mockFailingSelect
@@ -25,6 +26,7 @@ module Database.Seakale.Tests.Store
   , mockDelete
   , mockFailingDeleteMany
   , mockFailingDelete
+  -- * Running in a fake environment
   , runSelect
   , runSelectT
   , runStore
@@ -68,6 +70,14 @@ data StoreMock backend
                   (Either SeakaleError Integer)
   | forall k l a. Storable backend k l a
     => MockDelete (Condition backend a) (Either SeakaleError Integer)
+
+instance Show (StoreMock backend) where
+  show = \case
+    MockSelect _ _ _ _ -> "MockSelect"
+    MockCount  _ _ _   -> "MockSelect"
+    MockInsert _ _     -> "MockInsert"
+    MockUpdate _ _ _   -> "MockUpdate"
+    MockDelete _ _     -> "MockDelete"
 
 mockSelect :: Storable backend k l a => Condition backend a
            -> SelectClauses backend a -> [Entity a]
