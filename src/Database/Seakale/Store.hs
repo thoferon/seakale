@@ -29,6 +29,7 @@ module Database.Seakale.Store
   , insert
   , updateMany
   , update
+  , save
   , UpdateSetter
   , (=.)
   , deleteMany
@@ -158,6 +159,17 @@ update :: ( MonadStore backend m, Storable backend k l a
 update i setter = do
   n <- updateMany setter $ EntityID ==. i
   unless (n == 1) $ throwSeakaleError EntityNotFoundError
+
+save :: forall backend m k l a.
+        ( MonadStore backend m, Storable backend k l a
+        , ToRow backend k (EntityID a), ToRow backend l a )
+     => EntityID a -> a -> m ()
+save i val = do
+  let setter = UpdateSetter $ \backend ->
+        let Relation{..} = (relation backend :: Relation backend k l a)
+            row          = fmap (fromMaybe "NULL") $ toRow backend val
+        in vzip relationColumns row
+  update i setter
 
 -- | Delete rows matching the given conditions.
 deleteMany :: forall backend m k l a.

@@ -81,19 +81,30 @@ spec = do
         `shouldReturn` Right 1
 
   describe "update" $ do
-    it "updates a row given its ID" $ do
-      let mock = mockExecute "UPDATE users SET password = 'secret'\
-                             \ WHERE id = 42" 1
+    let req = "UPDATE users SET password = 'secret' WHERE id = 42"
 
+    it "updates a row given its ID" $ do
+      let mock = mockExecute req 1
       run mock (update (UserID 42) (UserPassword =. "secret"))
         `shouldReturn` Right ()
 
     it "throws EntityNotFoundError if no row was modified" $ do
-      let mock = mockExecute "UPDATE users SET password = 'secret'\
-                             \ WHERE id = 42" 0
-
+      let mock = mockExecute req 0
       run mock (update (UserID 42) (UserPassword =. "secret"))
         `shouldReturn` Left EntityNotFoundError
+
+  describe "save" $ do
+    let user = User "fake@server.tld" "secret"
+        req  = "UPDATE users SET email = 'fake@server.tld', password = 'secret'\
+               \ WHERE id = 42"
+
+    it "updates a row given its ID" $ do
+      let mock = mockExecute req 1
+      run mock (save (UserID 42) user) `shouldReturn` Right ()
+
+    it "throws EntityNotFoundError if no row was modified" $ do
+      let mock = mockExecute req 0
+      run mock (save (UserID 42) user) `shouldReturn` Left EntityNotFoundError
 
   describe "deleteMany" $ do
     it "deletes rows matching some condition" $ do
