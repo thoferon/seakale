@@ -30,7 +30,7 @@ instance ToRow PSQL One String where
 instance {-# OVERLAPPABLE #-} ToRow PSQL One a => ToRow PSQL One [a] where
   toRow backend =
     singleton . Just . ("'{" <>) . (<> "}'") . mconcat . intersperse ","
-    . map (("\"" <>) . (<> "\"") . escapeByteString)
+    . map (("\"" <>) . (<> "\"") . escapeByteString . trimOuterQuotes)
     . (>>= map (fromMaybe "NULL") . vectorToList . toRow backend)
 
 escapeByteString :: BS.ByteString -> BS.ByteString
@@ -39,3 +39,8 @@ escapeByteString bs =
     (bs', ("\\", bs'')) -> bs' <> "\\\\" <> escapeByteString bs''
     (bs', ("\"", bs'')) -> bs' <> "\\\"" <> escapeByteString bs''
     (bs', _) -> bs'
+
+trimOuterQuotes :: BS.ByteString -> BS.ByteString
+trimOuterQuotes bs =
+  let bs' = case BS.splitAt 1 bs of { ("'", b) -> b; _ -> bs }
+  in case BS.unsnoc bs' of { Just (bs'', '\'') -> bs''; _ -> bs' }
