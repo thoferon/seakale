@@ -1,5 +1,9 @@
 # Revision history for seakale-postgresql
 
+## 0.3.0.0 -- 2017-03-30
+
+* Support for composite types (with Composite a)
+
 ## 0.2.0.1 -- 2017-03-20
 
 * Fix ToRow instance of lists.

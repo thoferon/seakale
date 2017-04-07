@@ -17,6 +17,8 @@ module Database.Seakale.PostgreSQL
   , runStore
   , runStoreT
   , HasConnection(..)
+  , TypeInfo(..)
+  , TypeType(..)
   , PSQL(..)
   , defaultPSQL
   , SeakaleError(..)
@@ -39,6 +41,8 @@ module Database.Seakale.PostgreSQL
   , Eight
   , Nine
   , Ten
+  -- * Specific types
+  , Composite(..)
   ) where
 
 import           Control.Monad.Except
@@ -47,6 +51,8 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 import           Control.Monad.Trans.Free
 
+import           Data.Function
+import           Data.List
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Word
@@ -116,7 +122,20 @@ instance HasConnection m => HasConnection (StateT s m) where
     put s'
     return x
 
-type TypeCache = [(Oid, BS.ByteString)]
+type TypeInfoOid = (BS.ByteString, Maybe [(BS.ByteString, Oid)], Maybe Oid)
+
+data TypeType
+  = TTComposite [(BS.ByteString, TypeInfo)]
+  | TTArray TypeInfo
+  | TTOther
+  deriving Show
+
+data TypeInfo = TypeInfo
+  { typeName :: BS.ByteString
+  , typeType :: TypeType
+  } deriving Show
+
+type TypeCache = [(Oid, TypeInfoOid)]
 
 data PSQL = PSQL { psqlLogQueries :: Bool }
 
@@ -124,7 +143,7 @@ defaultPSQL :: PSQL
 defaultPSQL = PSQL False
 
 instance Backend PSQL where
-  type ColumnType PSQL = BS.ByteString
+  type ColumnType PSQL = TypeInfo
 
   type MonadBackend PSQL m = ( HasConnection m
                              , MonadState TypeCache m
@@ -204,9 +223,22 @@ runExecute PSQL{..} lazyReq = do
     Just ((n,"") : _) -> return n
     _ -> throwError $ "Can't get number of rows affected for " <> req
 
-resolveType :: MonadBackend PSQL m => Oid
-            -> ExceptT BS.ByteString m BS.ByteString
+resolveType :: MonadBackend PSQL m => Oid -> ExceptT BS.ByteString m TypeInfo
 resolveType oid = do
+  (name, mAttrs, mElemOID) <- resolveTypeOid oid
+  case (mAttrs, mElemOID) of
+    (Nothing, Nothing) -> return $ TypeInfo name TTOther
+    (Just attrs, Nothing) -> do
+      attrs' <- mapM (\(aname, aoid) -> (aname,) <$> resolveType aoid) attrs
+      return $ TypeInfo name $ TTComposite attrs'
+    (Nothing, Just eoid) -> do
+      etinfo <- resolveType eoid
+      return $ TypeInfo name $ TTArray etinfo
+    _ -> throwError $ "Can't resolve type " <> name
+
+resolveTypeOid :: MonadBackend PSQL m => Oid
+               -> ExceptT BS.ByteString m TypeInfoOid
+resolveTypeOid oid = do
   cache <- get
   case lookup oid cache of
     Just n  -> return n
@@ -219,17 +251,56 @@ resolveType oid = do
 
 getTypes :: MonadBackend PSQL m => ExceptT BS.ByteString m TypeCache
 getTypes = do
-  res <- exec' "SELECT oid, typname FROM pg_type"
-  let _until i = takeWhile (/= i) $ iterate (+1) 0
-  nrows <- liftIO $ ntuples res
+    -- It uses { for separator as a hack to force the presence of double quotes
+    res <- exec' "SELECT pg_type.oid, typname, typtype, typelem, typlen,\
+                 \ array_agg(attnum || '{' || attname || '{' || atttypid)\
+                 \ FROM pg_type LEFT JOIN pg_attribute ON attrelid = typrelid\
+                 \ AND typrelid <> 0 GROUP BY oid, typname, typtype, typelem,\
+                 \ typlen"
+    let _until i = takeWhile (/= i) $ iterate (+1) 0
+    nrows <- liftIO $ ntuples res
 
-  forM (_until nrows) $ \row -> do
-    oidBS  <- liftIO $ getvalue' res row 0
-    nameBS <- liftIO $ getvalue' res row 1
-    case (fmap (reads . BS.unpack) oidBS, nameBS) of
-      (Just ((i,"") : _), Just name) ->
-        return (Oid (fromInteger i), name)
-      _ -> throwError "Can't read types from pg_type"
+    forM (_until nrows) $ \row -> do
+      oidBS  <- liftIO $ getvalue' res row 0
+      nameBS <- liftIO $ getvalue' res row 1
+      typeBS <- liftIO $ getvalue' res row 2
+      elemBS <- liftIO $ getvalue' res row 3
+      lenBS  <- liftIO $ getvalue' res row 4
+      attBS  <- liftIO $ getvalue' res row 5
+
+      case ( fmap (reads . BS.unpack) oidBS, nameBS, typeBS
+           , fmap (reads . BS.unpack) elemBS, lenBS, attBS ) of
+        (Just ((i,"") : _), Just name, _, Just ((e,""):_), Just "-1", _)
+          | e /= 0 -> return ( Oid (fromInteger i)
+                             , (name, Nothing, Just (Oid (fromInteger e))) )
+        (Just ((i,"") : _), Just name, Just "c", _, _, Just bs) -> do
+          attrs <- case readAttrs bs of
+            Nothing ->
+              throwError $ "Can't read attributes of composite type: " <> bs
+            Just as -> return as
+          return (Oid (fromInteger i), (name, Just attrs, Nothing))
+        (Just ((i,"") : _), Just name, _, _, _, _) ->
+          return (Oid (fromInteger i), (name, Nothing, Nothing))
+        _ -> throwError "Can't read types from pg_type"
+
+  where
+    readAttrs :: BS.ByteString -> Maybe [(BS.ByteString, Oid)]
+    readAttrs bs = do
+      stripped <- (BS.stripPrefix "{" >=> BS.stripSuffix "}") bs
+      bsTuples <- forM (BS.split ',' stripped) $ \sub -> do
+        strippedSub <- (BS.stripPrefix "\"" >=> BS.stripSuffix "\"") sub
+        return $ BS.split '{' strippedSub
+
+      tuples <- forM bsTuples $ \att -> case att of
+        [attnum, attname, atttypid] ->
+          case (reads (BS.unpack attnum), reads (BS.unpack atttypid)) of
+            ((n,""):_, (i,""):_) ->
+              Just (n :: Int, attname, Oid (fromInteger i))
+            _ -> Nothing
+        _ -> Nothing
+
+      return $ map (\(_,n,i) -> (n,i)) $ sortBy (compare `on` (\(n,_,_) -> n)) $
+        filter (\(n,_,_) -> n > 0) tuples
 
 exec' :: MonadBackend PSQL m => BS.ByteString
       -> ExceptT BS.ByteString m Result
@@ -255,3 +326,5 @@ exec' req = do
     _ -> return ()
 
   return res
+
+newtype Composite a = Composite { fromComposite :: a } deriving (Show, Eq)

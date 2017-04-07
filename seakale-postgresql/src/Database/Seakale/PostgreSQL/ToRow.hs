@@ -44,3 +44,9 @@ trimOuterQuotes :: BS.ByteString -> BS.ByteString
 trimOuterQuotes bs =
   let bs' = case BS.splitAt 1 bs of { ("'", b) -> b; _ -> bs }
   in case BS.unsnoc bs' of { Just (bs'', '\'') -> bs''; _ -> bs' }
+
+instance ToRow PSQL n a => ToRow PSQL One (Composite a) where
+  toRow backend =
+    singleton . Just . ("'(" <>) . (<> ")'") . mconcat . intersperse ","
+    . map (("\"" <>) . (<> "\"") . escapeByteString . trimOuterQuotes)
+    . map (fromMaybe "NULL") . vectorToList . toRow backend . fromComposite

@@ -15,7 +15,8 @@ import Data.Either
 import Test.Hspec hiding (after)
 
 import Database.Seakale.FromRow
-import Database.Seakale.PostgreSQL (defaultPSQL, PSQL, Request)
+import Database.Seakale.PostgreSQL ( defaultPSQL, PSQL, Request, TypeInfo(..)
+                                   , TypeType(..) )
 import Database.Seakale.PostgreSQL.FromRow ()
 import Database.Seakale.PostgreSQL.ToRow ()
 import Database.Seakale.Tests.Request
@@ -65,12 +66,12 @@ instance Property PSQL User UserProperty where
     UserPassword -> ["password"]
 
 userIDCols :: [ColumnInfo PSQL]
-userIDCols = [ColumnInfo (Just "id") "int4"]
+userIDCols = [ColumnInfo (Just "id") (TypeInfo "int4" TTOther)]
 
 userCols :: [ColumnInfo PSQL]
 userCols =
-  [ ColumnInfo (Just "email")    "varchar"
-  , ColumnInfo (Just "password") "varchar"
+  [ ColumnInfo (Just "email")    (TypeInfo "varchar" TTOther)
+  , ColumnInfo (Just "password") (TypeInfo "varchar" TTOther)
   ]
 
 userEntCols :: [ColumnInfo PSQL]
@@ -129,12 +130,12 @@ instance FromRow PSQL Two Post
 instance ToRow   PSQL Two Post
 
 postIDCols :: [ColumnInfo PSQL]
-postIDCols = [ColumnInfo (Just "id") "int4"]
+postIDCols = [ColumnInfo (Just "id") (TypeInfo "int4" TTOther)]
 
 postCols :: [ColumnInfo PSQL]
 postCols =
-  [ ColumnInfo (Just "title")    "varchar"
-  , ColumnInfo (Just "contents") "varchar"
+  [ ColumnInfo (Just "title")    (TypeInfo "varchar" TTOther)
+  , ColumnInfo (Just "contents") (TypeInfo "varchar" TTOther)
   ]
 
 postEntCols :: [ColumnInfo PSQL]
@@ -192,14 +193,14 @@ instance Property PSQL Comment CommentProperty where
     CommentTitle  -> ["title"]
 
 commentIDCols :: [ColumnInfo PSQL]
-commentIDCols = [ColumnInfo (Just "id") "int4"]
+commentIDCols = [ColumnInfo (Just "id") (TypeInfo "int4" TTOther)]
 
 commentCols :: [ColumnInfo PSQL]
 commentCols =
-  [ ColumnInfo (Just "post_id")  "int4"
-  , ColumnInfo (Just "user_id")  "int4"
-  , ColumnInfo (Just "title")    "varchar"
-  , ColumnInfo (Just "contents") "varchar"
+  [ ColumnInfo (Just "post_id")  (TypeInfo "int4"    TTOther)
+  , ColumnInfo (Just "user_id")  (TypeInfo "int4"    TTOther)
+  , ColumnInfo (Just "title")    (TypeInfo "varchar" TTOther)
+  , ColumnInfo (Just "contents") (TypeInfo "varchar" TTOther)
   ]
 
 commentEntCols :: [ColumnInfo PSQL]

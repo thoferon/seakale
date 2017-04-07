@@ -20,7 +20,7 @@ instance FromRow PSQL One Bool where
 
 instance FromRow PSQL One UTCTime where
   fromRow = pconsume `pbind` \(ColumnInfo{..}, Field{..}) ->
-    case (colInfoType, fieldValue) of
+    case (typeName colInfoType, fieldValue) of
       ("timestamp", Just bs) ->
         case parseTimeM True defaultTimeLocale "%F %T%Q" (BS.unpack bs) of
           Just t  -> preturn t
@@ -38,46 +38,63 @@ instance FromRow PSQL One String where
 
 instance {-# OVERLAPPABLE #-} FromRow PSQL One a => FromRow PSQL One [a] where
   fromRow = pconsume `pbind` \(col@ColumnInfo{..}, Field{..}) ->
-    case (BS.splitAt 1 colInfoType, fieldValue) of
-      (("_", typ), Just bs) ->
+    case (typeType colInfoType, fieldValue) of
+      (TTArray subtype, Just bs) ->
         pbackend `pbind` \backend ->
-        arrayParser backend (col { colInfoType = typ }) bs
-      (_, Just _) -> pfail $ "invalid type for list: " ++ BS.unpack colInfoType
+          let col'  = col { colInfoType = subtype }
+              f mBS = parseRow fromRow backend [col'] [Field mBS]
+          in either pfail preturn $ seqParser '{' '}' "array" f bs
+      (_, Just _) ->
+        pfail $ "invalid type for list: " ++ BS.unpack (typeName colInfoType)
       (_, Nothing) -> pfail "unexpected NULL for list"
 
 -- FIXME: What about \n for example?
-arrayParser :: FromRow PSQL One a => PSQL -> ColumnInfo PSQL -> BS.ByteString
-            -> RowParser PSQL Zero [a]
-arrayParser backend col = either pfail preturn . go
-  where
-    go :: FromRow PSQL One a => BS.ByteString -> Either String [a]
-    go bs = case BS.splitAt 1 bs of
-      ("{", "}") -> return []
-      ("{", bs') -> readValues id bs'
-      _ -> Left $ "invalid array starting with " ++ show (BS.take 30 bs)
+seqParser :: Char -> Char -> String -> (Maybe BS.ByteString -> Either String a)
+          -> BS.ByteString -> Either String [a]
+seqParser ldelim rdelim descr h fullBS = case BS.uncons fullBS of
+    Just (ldelim', rdelim')
+      | ldelim == ldelim' && BS.singleton rdelim == rdelim' -> return []
+    Just (ldelim', bs') | ldelim == ldelim' -> readValues h id bs'
+    _ -> Left $ "invalid " ++ descr ++ " starting with "
+                ++ show (BS.take 30 fullBS)
 
-    readValues :: FromRow PSQL One a => ([a] -> [a]) -> BS.ByteString
-               -> Either String [a]
-    readValues f bs = do
+  where
+    readValues :: (Maybe BS.ByteString -> Either String a) -> ([a] -> [a])
+               -> BS.ByteString -> Either String [a]
+    readValues f g bs = do
       (valBS, bs') <- readByteString bs
       let mValBS = if valBS == "NULL" then Nothing else Just valBS
-      val <- parseRow fromRow backend [col] [Field mValBS]
-      case BS.splitAt 1 bs' of
-        (",", bs'') -> readValues (f . (val :)) bs''
-        ("}", "")   -> return $! f [val]
-        _ -> Left $ "invalid array around " ++ show (BS.take 30 bs')
+      val <- f mValBS
+      case BS.uncons bs' of
+        Just (',', bs'') -> readValues f (g . (val :)) bs''
+        Just (rdelim', "") | rdelim == rdelim' -> return $! g [val]
+        _ -> Left $ "invalid " ++ descr ++ " around " ++ show (BS.take 30 bs')
 
     readByteString :: BS.ByteString
                    -> Either String (BS.ByteString, BS.ByteString)
-    readByteString bs = case BS.splitAt 1 bs of
-      ("\"", bs') -> readByteString' "" bs'
-      _ -> return $ BS.span (\c -> c /= ',' && c /= '}') bs
+    readByteString bs = case BS.uncons bs of
+      Just ('"', bs') -> readByteString' "" bs'
+      _ -> return $ BS.span (\c -> c /= ',' && c /= rdelim) bs
 
     readByteString' :: BS.ByteString -> BS.ByteString
                     -> Either String (BS.ByteString, BS.ByteString)
     readByteString' acc bs =
-      case fmap (BS.splitAt 1) (BS.span (\c -> c /= '"' && c /= '\\') bs) of
-        (bs', ("\"", bs'')) -> return (acc <> bs', bs'')
-        (bs', ("\\", bs'')) -> let (c, bs''') = BS.splitAt 1 bs''
-                               in readByteString' (acc <> bs' <> c) bs'''
+      case fmap BS.uncons (BS.span (\c -> c /= '"' && c /= '\\') bs) of
+        (bs', Just ('"', bs'')) -> case BS.uncons bs'' of
+          Just ('"', bs''') -> readByteString' (bs' <> "\"") bs'''
+          _ -> return (acc <> bs', bs'')
+        (bs', Just ('\\', bs'')) -> let (c, bs''') = BS.splitAt 1 bs''
+                                    in readByteString' (acc <> bs' <> c) bs'''
         (bs', _) -> Left $ "unreadable value around " ++ show (BS.take 30 bs')
+
+instance (Show a, FromRow PSQL n a) => FromRow PSQL One (Composite a) where
+  fromRow = pconsume `pbind` \(ColumnInfo{..}, Field{..}) ->
+    case (typeType colInfoType, fieldValue) of
+      (TTComposite attrs, Just bs) -> pbackend `pbind` \backend ->
+        either pfail preturn $ do
+          let cols = map (\(name, tinfo) -> ColumnInfo (Just name) tinfo) attrs
+          fields <- seqParser '(' ')' (BS.unpack (typeName colInfoType))
+                              (Right . Field) bs
+          Composite <$> parseRow fromRow backend cols fields
+      (_, Just _) -> pfail $ "expected composite type"
+      (_, Nothing) -> pfail "unexpected NULL for composite type"
