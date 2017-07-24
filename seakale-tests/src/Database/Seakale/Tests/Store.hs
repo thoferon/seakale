@@ -22,6 +22,8 @@ module Database.Seakale.Tests.Store
   , mockUpdate
   , mockFailingUpdateMany
   , mockFailingUpdate
+  , mockSave
+  , mockFailingSave
   , mockDeleteMany
   , mockDelete
   , mockFailingDeleteMany
@@ -43,6 +45,7 @@ import           Control.Monad.State
 import           Control.Monad.Trans.Free
 import qualified Control.Monad.Except as E
 
+import           Data.Maybe
 import           Data.Monoid
 import           Data.Typeable
 import qualified Data.ByteString.Lazy.Char8 as BSL
@@ -177,6 +180,24 @@ mockFailingUpdate :: (Storable backend k l a, ToRow backend k (EntityID a))
                   => EntityID a -> UpdateSetter backend a -> SeakaleError
                   -> Mock (StoreMock backend) ()
 mockFailingUpdate i setter = mockFailingUpdateMany setter (EntityID ==. i)
+
+mockSave :: ( Storable backend k l a, ToRow backend k (EntityID a)
+            , ToRow backend l a ) => EntityID a -> a
+         -> Mock (StoreMock backend) ()
+mockSave i val = mockUpdate i (mockSaveHelper val)
+
+mockFailingSave :: ( Storable backend k l a, ToRow backend k (EntityID a)
+                   , ToRow backend l a ) => EntityID a -> a -> SeakaleError
+                -> Mock (StoreMock backend) ()
+mockFailingSave i val = mockFailingUpdate i (mockSaveHelper val)
+
+mockSaveHelper :: forall backend k l a.
+                  ( Storable backend k l a, ToRow backend k (EntityID a)
+                  , ToRow backend l a ) => a -> UpdateSetter backend a
+mockSaveHelper val = UpdateSetter $ \backend ->
+  let Relation{..} = (relation backend :: Relation backend k l a)
+      row          = fmap (fromMaybe "NULL") $ toRow backend val
+  in vzip relationColumns row
 
 mockDeleteMany :: Storable backend k l a => Condition backend a -> Integer
                -> Mock (StoreMock backend) ()
