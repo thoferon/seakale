@@ -103,8 +103,9 @@ execParser parser backend pairs = case parser of
 class FromRow backend n a | a -> n where
   fromRow :: RowParser backend n a
 
-  default fromRow :: (Generic a, GFromRow backend ReadCon n (Rep a))
-                  => RowParser backend (n :+ Zero) a
+  default fromRow :: ( Generic a, GFromRow backend ReadCon n (Rep a)
+                     , n ~ (n :+ Zero) )
+                  => RowParser backend n a
   fromRow =
     gfromRow ReadCon Nothing `pbind` \case
       Nothing -> pfail "GFromRow backend ?: error while parsing"

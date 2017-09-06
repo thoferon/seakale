@@ -23,7 +23,7 @@ executable seakale-demo-simple
 
   other-modules:       Shared
 
-  build-depends:       base >=4.8 && <4.10
+  build-depends:       base >=4.8 && <4.11
                      , seakale
                      , seakale-postgresql
                      , mtl
@@ -44,7 +44,7 @@ executable seakale-demo-storable
 
   other-modules:       Shared
 
-  build-depends:       base >=4.8 && <4.10
+  build-depends:       base >=4.8 && <4.11
                      , seakale
                      , seakale-postgresql
                      , mtl
@@ -67,7 +67,7 @@ executable seakale-demo-join
 
   other-modules:       Shared
 
-  build-depends:       base >=4.8 && <4.10
+  build-depends:       base >=4.8 && <4.11
                      , seakale
                      , seakale-postgresql
                      , mtl

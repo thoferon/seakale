@@ -1,11 +1,10 @@
-resolver: lts-7.16
+resolver: nightly-2017-09-06
 packages:
 - '.'
 - 'seakale-postgresql'
 - 'seakale-tests'
 - 'demo'
 - 'tests'
-extra-deps:
-- recursion-schemes-5
+extra-deps: []
 flags: {}
 extra-package-dbs: []
